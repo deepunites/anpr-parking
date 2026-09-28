@@ -1,0 +1,90 @@
+# CD (фаза 9 §5): deploy staging (main) → smoke (реальное camera-событие, полный путь) → [approval] → production (только тег).
+# Стратегия: rolling update с readiness gate (maxUnavailable 0). Blue-green не нужен: WebSocket-состояние в Redis,
+# миграции обратносовместимы в пределах релиза (expand → migrate → contract в трёх релизах, INFRA §5).
+# Откат: одна команда `helm rollback parking` (scripts/rollback.sh) — проверена в staging джобой rollback-drill.
+name: cd
+on:
+  workflow_run:
+    workflows: [ci]
+    types: [completed]
+    branches: [main]
+  push:
+    tags: ["v*"]
+permissions:
+  contents: read
+  id-token: write
+env:
+  REGISTRY: harbor.parking.uz/parking
+
+jobs:
+  deploy-staging:
+    if: github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success'
+    runs-on: [self-hosted, staging]              # раннер внутри контура UZ (Q6): kubeconfig из Vault, доступ только к staging
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+        with: {version: v3.19.0}
+      - id: tag
+        run: |
+          version=$(grep -m1 '^version' backend/pyproject.toml | sed 's/.*"\(.*\)"/\1/')
+          echo "tag=${version}-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+      - name: helm upgrade (миграции — pre-upgrade Job, readiness gate)
+        run: |
+          helm upgrade --install parking deploy/helm/parking -n parking-staging --create-namespace \
+            -f deploy/helm/parking/values-staging.yaml --set image.tag=${{ steps.tag.outputs.tag }} \
+            --atomic --timeout 15m --history-max 10
+      - name: Смоук: camera-событие → сессия → выезд → оплата → шлагбаум → закрытие (scripts/smoke_staging.py)
+        env:
+          SMOKE_BASE_URL: https://staging.parking.example.uz
+          SMOKE_CAMERA_KEY_ENTRY: ${{ secrets.STAGING_SMOKE_CAMERA_KEY_ENTRY }}
+          SMOKE_CAMERA_KEY_EXIT: ${{ secrets.STAGING_SMOKE_CAMERA_KEY_EXIT }}
+          SMOKE_CASHIER_USER: ${{ secrets.STAGING_SMOKE_CASHIER_USER }}
+          SMOKE_CASHIER_PASSWORD: ${{ secrets.STAGING_SMOKE_CASHIER_PASSWORD }}
+        run: backend/.venv/bin/python backend/scripts/smoke_staging.py || (helm rollback parking -n parking-staging && exit 1)
+
+  rollback-drill:
+    # откат проверяется в staging на каждом релизе: rollback на предыдущую ревизию → смоук → возврат
+    needs: [deploy-staging]
+    runs-on: [self-hosted, staging]
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+      - run: scripts/rollback.sh parking parking-staging --drill
+        env: {SMOKE_BASE_URL: https://staging.parking.example.uz}
+
+  chaos-drill:
+    # «убит под API → трафик не потерян»: k6 baseline (÷10) + kubectl delete pod во время прогона; ошибок 0 (scripts/chaos_kill_api.sh)
+    needs: [deploy-staging]
+    runs-on: [self-hosted, staging]
+    steps:
+      - uses: actions/checkout@v4
+      - run: scripts/chaos_kill_api.sh parking-staging https://staging.parking.example.uz
+
+  deploy-production:
+    # только с тега vX.Y.Z, только после ручного подтверждения (environment production с required reviewers)
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: [self-hosted, production]
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+        with: {version: v3.19.0}
+      - id: tag
+        run: |
+          version=${GITHUB_REF_NAME#v}
+          grep -q "^version = \"$version\"" backend/pyproject.toml || { echo "тег $GITHUB_REF_NAME ≠ version в pyproject"; exit 1; }
+          echo "tag=${version}-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+      - name: Образ с этим тегом уже прошёл staging + смоук + rollback-drill (тот же git-sha)
+        run: cosign verify --certificate-identity-regexp 'github.com/parking' --certificate-oidc-issuer https://token.actions.githubusercontent.com ${{ env.REGISTRY }}/parking-backend:${{ steps.tag.outputs.tag }}
+      - run: |
+          helm upgrade --install parking deploy/helm/parking -n parking --create-namespace \
+            --set image.tag=${{ steps.tag.outputs.tag }} --atomic --timeout 20m --history-max 10
+      - run: backend/.venv/bin/python backend/scripts/smoke_staging.py
+        env:
+          SMOKE_BASE_URL: https://parking.example.uz
+          SMOKE_CAMERA_KEY_ENTRY: ${{ secrets.PROD_SMOKE_CAMERA_KEY_ENTRY }}
+          SMOKE_CAMERA_KEY_EXIT: ${{ secrets.PROD_SMOKE_CAMERA_KEY_EXIT }}
+          SMOKE_CASHIER_USER: ${{ secrets.PROD_SMOKE_CASHIER_USER }}
+          SMOKE_CASHIER_PASSWORD: ${{ secrets.PROD_SMOKE_CASHIER_PASSWORD }}
+          SMOKE_LOT_ID: ${{ vars.PROD_SMOKE_LOT_ID }}   # выделенная «смоук-площадка» production без реальных шлагбаумов

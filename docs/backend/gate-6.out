@@ -1,0 +1,75 @@
+# Gate фазы 6 — реальный вывод команд (2026-09-19T06:00Z; стенд 2 vCPU без Docker: Node 24 LTS локально, pgserver + Redis)
+
+## Frontend (frontend/)
+$ npm run build   (gen:api → tsc --noEmit → vite build)
+✨ openapi-typescript 7.13.0
+🚀 ../docs/openapi.json → src/api/schema.d.ts [669.1ms]
+✓ 1755 modules transformed.
+dist/index.html                         0.45 kB │ gzip:  0.29 kB
+dist/assets/index-Dq5iuKvs.css         21.35 kB │ gzip:  5.04 kB
+dist/assets/ListPages-BV7idZ-j.js       2.48 kB │ gzip:  0.83 kB
+dist/assets/SessionsPage-DKwm1sLd.js    2.69 kB │ gzip:  1.08 kB
+dist/assets/PaymentsPage-P29rDeda.js    3.73 kB │ gzip:  1.38 kB
+dist/assets/index-CtDwT82P.js         286.32 kB │ gzip: 91.97 kB
+✓ built in 11.30s
+$ npx tsc --noEmit && npx eslint src e2e
+tsc: 0 errors; eslint: 0 problems
+$ npm run check:api
+api types are in sync with docs/openapi.json
+$ npx vitest run
+ ✓ src/api/client.test.ts (2 tests) 46ms
+ ✓ src/realtime/socket.test.ts (4 tests) 26ms
+ Test Files  2 passed (2)
+      Tests  6 passed (6)
+
+## Типы из OpenAPI: расхождение ломает сборку (демонстрация)
+--- drift demo: OccupancyOut.occupied renamed in schema ---
+src/pages/DashboardPage.tsx(27,16): error TS2339: Property 'occupied' does not exist on type '{ capacity: number; free: number; lot_id: string; occupied_count: number; ratio: number; }'.
+restored: tsc clean
+
+## E2E (Playwright, chromium) против реального стека: backend/scripts/e2e_stack.py + vite preview
+$ npx playwright test
+  ✓  1 [chromium] › e2e/flow.spec.ts:5:1 › operator flow: login → live → entry → plate correction → cash → exit (15.2s)
+  ✓  2 [chromium] › e2e/rbac.spec.ts:5:1 › viewer cannot open the barrier: no button and API 403 (5.4s)
+  ✓  3 [chromium] › e2e/security.spec.ts:4:1 › security headers and no inline scripts in the built app (1.0s)
+  ✓  4 [chromium] › e2e/tenant-isolation.spec.ts:6:1 › tenant B sees nothing of tenant A (8.5s)
+  ✓  5 [chromium] › e2e/ws-reconnect.spec.ts:5:1 › websocket drop shows stale indicator, reconnects and refetches state (2.8s)
+  5 passed (55.9s)
+
+## Заголовки безопасности собранного приложения (vite preview; тот же набор в frontend/nginx.conf)
+$ curl -sI http://127.0.0.1:4173/ (vite preview, dist/)
+Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: http://127.0.0.1:9000; connect-src 'self'  ws: wss:; font-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'
+Strict-Transport-Security: max-age=63072000; includeSubDomains; preload
+X-Content-Type-Options: nosniff
+Referrer-Policy: no-referrer
+Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=()
+X-Frame-Options: DENY
+$ grep -c "<script" dist/index.html без src / инлайн <style>
+1
+0
+inline <script> в dist/index.html: 0 (единственный <script> — type=module src=/assets/…); <style>: 0
+
+## Секреты в бандле
+detect-secrets 1.5.0 | scanned frontend/dist (all files) | files with findings: 0 | plugins: 27
+--- grep dist for key/token patterns ---
+matches: 0
+(gitleaks-бинарь недоступен на стенде — A-37; в CI gitleaks-action по dist/)
+
+## Lighthouse — Live Parking (desktop preset, chrome-headless-shell, benchmarkIndex ≈ 400 — очень медленный стенд)
+$ node scripts/lighthouse.mjs   (×2)
+{'performance': 97, 'accessibility': 100, 'best-practices': 100} lcp 699 tbt 17 cls 0.096
+{'performance': 98, 'accessibility': 100, 'best-practices': 100} lcp 691 tbt 0 cls 0.096
+отчёт: docs/frontend/lighthouse-live.html / .json
+
+## Backend (backend/): WebSocket /ws/v1/lots/{lot_id}, realtime fan-out, деньги в ответах платежей
+$ uv run ruff check . && uv run ruff format --check .
+All checks passed!
+277 files already formatted
+$ uv run mypy --strict src/
+Success: no issues found in 184 source files
+$ uv run pytest -q
+254 passed, 3 warnings in 178.31s (0:02:58)
+$ uv run pytest -q tests/api/test_ws.py -s   (строки GATE)
+GATE ws: auth first message, Pub/Sub delivery, lot isolation, ping/pong, re-auth without disconnect
+GATE ws isolation: tenant B → 4404 on tenant A lot; scoped operator → 4404 outside scope
+GATE ws backpressure: 100 OCCUPANCY → 1 (latest), ENTRY overflow dropped=11 + GAP, SESSION_* overflow → close 1013

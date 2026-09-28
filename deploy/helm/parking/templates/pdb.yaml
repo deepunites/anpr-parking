@@ -1,0 +1,26 @@
+{{- $root := . -}}
+{{- $components := dict "api" .Values.api.pdb "publisher" .Values.publisher.pdb "consumer" .Values.consumer.pdb "replayer" .Values.replayer.pdb "camera-health" .Values.cameraHealth.pdb "webhooks" .Values.webhooks.pdb "frontend" .Values.frontend.pdb "celery-beat" (dict "maxUnavailable" 1) -}}
+{{- range $name, $pool := .Values.celery.pools }}
+{{- $_ := set $components (printf "celery-%s" $name) (dict "minAvailable" 1) }}
+{{- end }}
+{{- range $component, $pdb := $components }}
+---
+# PodDisruptionBudget на каждый deployment (§2): singleton'ы — maxUnavailable 1 (иначе drain узла блокируется навсегда)
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "parking.fullname" $root }}-{{ $component }}
+  labels:
+    {{- include "parking.labels" $root | nindent 4 }}
+    app.kubernetes.io/component: {{ $component }}
+spec:
+  {{- if hasKey $pdb "minAvailable" }}
+  minAvailable: {{ $pdb.minAvailable }}
+  {{- else }}
+  maxUnavailable: {{ $pdb.maxUnavailable }}
+  {{- end }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: {{ $root.Release.Name }}
+      app.kubernetes.io/component: {{ $component }}
+{{- end }}

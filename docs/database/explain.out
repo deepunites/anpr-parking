@@ -1,0 +1,182 @@
+
+=== 1. Активная сессия по (tenant_id, lot_id, plate_hash) — горячий путь EXIT ===
+                                                                                   QUERY PLAN                                                                                    
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Nested Loop  (cost=0.70..16.76 rows=1 width=24) (actual time=0.555..0.557 rows=1 loops=1)
+   Buffers: shared hit=3 read=4 written=3
+   ->  Index Scan using uq_vehicle_plate on vehicle v  (cost=0.42..8.44 rows=1 width=16) (actual time=0.406..0.407 rows=1 loops=1)
+         Index Cond: ((tenant_id = '00000000-0000-4000-8000-0000000000a1'::uuid) AND (plate_hash = '\x46f417c783e25675c947399657ed4774500e3c22968f8dba9faadce191b2b48d'::bytea))
+         Buffers: shared hit=1 read=3 written=2
+   ->  Index Scan using parking_session_p11_lot_id_vehicle_id_idx on parking_session_p11 s  (cost=0.28..8.30 rows=1 width=40) (actual time=0.144..0.145 rows=1 loops=1)
+         Index Cond: ((lot_id = '00000000-0000-4000-8000-00000000a101'::uuid) AND (vehicle_id = v.id))
+         Filter: (tenant_id = '00000000-0000-4000-8000-0000000000a1'::uuid)
+         Buffers: shared hit=2 read=1 written=1
+ Planning:
+   Buffers: shared hit=20 read=1 written=1
+ Planning Time: 0.621 ms
+ Execution Time: 0.579 ms
+(13 rows)
+
+
+=== 2. Blacklist по (tenant_id, plate_hash), lot_id IS NULL как глобальное правило ===
+                                                                                QUERY PLAN                                                                                 
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Index Scan using ix_access_lookup on access_rule  (cost=0.42..8.45 rows=1 width=53) (actual time=0.350..0.351 rows=1 loops=1)
+   Index Cond: ((tenant_id = '00000000-0000-4000-8000-0000000000a1'::uuid) AND (plate_hash = '\x021bbd75cf6530bd40f4ab8b131600e0188f4a8c51c9ebe112daef408a498e56'::bytea))
+   Filter: (((lot_id IS NULL) OR (lot_id = '00000000-0000-4000-8000-00000000a101'::uuid)) AND (kind = 'BLACKLIST'::access_kind) AND (validity @> now()))
+   Buffers: shared read=4 written=4
+ Planning:
+   Buffers: shared hit=83 read=6 written=6
+ Planning Time: 0.886 ms
+ Execution Time: 0.369 ms
+(8 rows)
+
+
+=== 3. Все виды правил (whitelist, VIP, subscription) одним запросом с проверкой срока ===
+                                                                                QUERY PLAN                                                                                 
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Index Only Scan using ix_access_lookup on access_rule  (cost=0.42..4.45 rows=1 width=38) (actual time=0.132..0.133 rows=1 loops=1)
+   Index Cond: ((tenant_id = '00000000-0000-4000-8000-0000000000a1'::uuid) AND (plate_hash = '\x021bbd75cf6530bd40f4ab8b131600e0188f4a8c51c9ebe112daef408a498e56'::bytea))
+   Filter: (((lot_id IS NULL) OR (lot_id = '00000000-0000-4000-8000-00000000a101'::uuid)) AND (validity @> now()))
+   Heap Fetches: 0
+   Buffers: shared hit=3 read=1 written=1
+ Planning:
+   Buffers: shared hit=6
+ Planning Time: 0.111 ms
+ Execution Time: 0.147 ms
+(9 rows)
+
+
+=== 4. Идемпотентность по ключу (с секундой события → одна партиция) ===
+                                                                                       QUERY PLAN                                                                                        
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Index Scan using anpr_idempotency_20260720_pkey on anpr_idempotency_20260720 anpr_idempotency  (cost=0.28..8.30 rows=1 width=88) (actual time=0.178..0.179 rows=1 loops=1)
+   Index Cond: ((event_second = '2026-07-21 02:47:08+05'::timestamp with time zone) AND (idempotency_key = '\xfea9ba6f9f592fa4b62751fc95596e3de0f3dfa9d8e4bcaff400dca2adc522a5'::bytea))
+   Buffers: shared hit=1 read=2 written=2
+ Planning:
+   Buffers: shared hit=6
+ Planning Time: 0.114 ms
+ Execution Time: 0.188 ms
+(7 rows)
+
+
+=== 5. Outbox: неопубликованные с FOR UPDATE SKIP LOCKED ===
+                                                                                  QUERY PLAN                                                                                  
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=45.08..46.37 rows=103 width=48) (actual time=0.178..0.286 rows=100 loops=1)
+   Buffers: shared hit=213
+   ->  LockRows  (cost=45.08..46.37 rows=103 width=48) (actual time=0.177..0.274 rows=100 loops=1)
+         Buffers: shared hit=213
+         ->  Sort  (cost=45.08..45.34 rows=103 width=48) (actual time=0.154..0.162 rows=100 loops=1)
+               Sort Key: outbox.id
+               Sort Method: quicksort  Memory: 32kB
+               Buffers: shared hit=13
+               ->  Append  (cost=0.00..41.64 rows=103 width=48) (actual time=0.046..0.113 rows=100 loops=1)
+                     Buffers: shared hit=10
+                     ->  Seq Scan on outbox_20260911 outbox_1  (cost=0.00..0.00 rows=1 width=44) (actual time=0.007..0.008 rows=0 loops=1)
+                           Filter: ((status = 'PENDING'::outbox_status) AND ((next_retry_at IS NULL) OR (next_retry_at <= now())))
+                     ->  Index Scan using outbox_20260912_id_idx on outbox_20260912 outbox_2  (cost=0.12..4.15 rows=1 width=44) (actual time=0.003..0.003 rows=0 loops=1)
+                           Filter: ((status = 'PENDING'::outbox_status) AND ((next_retry_at IS NULL) OR (next_retry_at <= now())))
+                           Buffers: shared hit=1
+                     ->  Index Scan using outbox_20260913_id_idx on outbox_20260913 outbox_3  (cost=0.12..4.15 rows=1 width=44) (actual time=0.003..0.003 rows=0 loops=1)
+                           Filter: ((status = 'PENDING'::outbox_status) AND ((next_retry_at IS NULL) OR (next_retry_at <= now())))
+                           Buffers: shared hit=1
+                     ->  Index Scan using outbox_20260914_id_idx on outbox_20260914 outbox_4  (cost=0.12..4.15 rows=1 width=44) (actual time=0.002..0.002 rows=0 loops=1)
+                           Filter: ((status = 'PENDING'::outbox_status) AND ((next_retry_at IS NULL) OR (next_retry_at <= now())))
+                           Buffers: shared hit=1
+                     ->  Index Scan using outbox_20260915_id_idx on outbox_20260915 outbox_5  (cost=0.12..4.15 rows=1 width=44) (actual time=0.002..0.002 rows=0 loops=1)
+                           Filter: ((status = 'PENDING'::outbox_status) AND ((next_retry_at IS NULL) OR (next_retry_at <= now())))
+                           Buffers: shared hit=1
+                     ->  Index Scan using outbox_20260916_id_idx on outbox_20260916 outbox_6  (cost=0.12..4.15 rows=1 width=44) (actual time=0.003..0.003 rows=0 loops=1)
+                           Filter: ((status = 'PENDING'::outbox_status) AND ((next_retry_at IS NULL) OR (next_retry_at <= now())))
+                           Buffers: shared hit=1
+                     ->  Index Scan using outbox_20260917_id_idx on outbox_20260917 outbox_7  (cost=0.12..4.15 rows=1 width=44) (actual time=0.001..0.001 rows=0 loops=1)
+                           Filter: ((status = 'PENDING'::outbox_status) AND ((next_retry_at IS NULL) OR (next_retry_at <= now())))
+                           Buffers: shared hit=1
+                     ->  Index Scan using outbox_20260918_id_idx on outbox_20260918 outbox_8  (cost=0.14..16.23 rows=93 width=44) (actual time=0.008..0.061 rows=100 loops=1)
+                           Filter: ((status = 'PENDING'::outbox_status) AND ((next_retry_at IS NULL) OR (next_retry_at <= now())))
+                           Buffers: shared hit=4
+                     ->  Seq Scan on outbox_20260919 outbox_9  (cost=0.00..0.00 rows=1 width=196) (actual time=0.002..0.002 rows=0 loops=1)
+                           Filter: ((status = 'PENDING'::outbox_status) AND ((next_retry_at IS NULL) OR (next_retry_at <= now())))
+                     ->  Seq Scan on outbox_20260920 outbox_10  (cost=0.00..0.00 rows=1 width=196) (actual time=0.001..0.002 rows=0 loops=1)
+                           Filter: ((status = 'PENDING'::outbox_status) AND ((next_retry_at IS NULL) OR (next_retry_at <= now())))
+                     ->  Seq Scan on outbox_20260921 outbox_11  (cost=0.00..0.00 rows=1 width=196) (actual time=0.001..0.001 rows=0 loops=1)
+                           Filter: ((status = 'PENDING'::outbox_status) AND ((next_retry_at IS NULL) OR (next_retry_at <= now())))
+ Planning:
+   Buffers: shared hit=1342 read=2 written=2
+ Planning Time: 6.571 ms
+ Execution Time: 0.390 ms
+(43 rows)
+
+
+=== 6. Occupancy: число активных сессий площадки ===
+                                                                                            QUERY PLAN                                                                                            
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Aggregate  (cost=125.40..125.41 rows=1 width=8) (actual time=1.172..1.172 rows=1 loops=1)
+   Buffers: shared hit=1 read=6 written=5
+   ->  Index Only Scan using parking_session_p11_lot_id_entry_time_idx on parking_session_p11 parking_session  (cost=0.28..113.26 rows=4856 width=0) (actual time=0.126..0.815 rows=5000 loops=1)
+         Index Cond: (lot_id = '00000000-0000-4000-8000-00000000a101'::uuid)
+         Heap Fetches: 0
+         Buffers: shared hit=1 read=6 written=5
+ Planning:
+   Buffers: shared hit=7
+ Planning Time: 0.263 ms
+ Execution Time: 1.191 ms
+(10 rows)
+
+
+=== 7. Дневной отчёт: платежи tenant за диапазон дат по способу оплаты ===
+                                                                                  QUERY PLAN                                                                                   
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ HashAggregate  (cost=827.43..827.46 rows=2 width=44) (actual time=9.013..9.015 rows=2 loops=1)
+   Group Key: method
+   Batches: 1  Memory Usage: 24kB
+   Buffers: shared read=134 written=87
+   ->  Index Only Scan using ix_payment_report on payment  (cost=0.43..748.68 rows=10500 width=12) (actual time=0.531..6.742 rows=10941 loops=1)
+         Index Cond: ((tenant_id = '00000000-0000-4000-8000-0000000000a1'::uuid) AND (paid_at >= (now() - '30 days'::interval)) AND (paid_at < (now() - '29 days'::interval)))
+         Heap Fetches: 0
+         Buffers: shared read=134 written=87
+ Planning:
+   Buffers: shared hit=155 read=12 written=12
+ Planning Time: 2.584 ms
+ Execution Time: 9.060 ms
+(12 rows)
+
+
+=== 8. Лента оператора: 50 сессий площадки после курсора (entry_time, id) ===
+                                                                                                       QUERY PLAN                                                                                                       
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=0.42..6.58 rows=50 width=28) (actual time=0.014..7.178 rows=50 loops=1)
+   Buffers: shared hit=13 read=41 written=28
+   ->  Index Scan using parking_session_p11_lot_id_entry_time_id_idx on parking_session_p11 parking_session  (cost=0.42..40937.88 rows=332348 width=28) (actual time=0.013..7.156 rows=50 loops=1)
+         Index Cond: ((lot_id = '00000000-0000-4000-8000-00000000a101'::uuid) AND (ROW(entry_time, id) < ROW('2026-09-19 01:23:08.811205+05'::timestamp with time zone, '953b504b-bf3f-42a3-ad48-dcc84a7033e7'::uuid)))
+         Buffers: shared hit=13 read=41 written=28
+ Planning:
+   Buffers: shared hit=7
+ Planning Time: 0.309 ms
+ Execution Time: 7.232 ms
+(9 rows)
+
+
+=== 9. Камеры без heartbeat дольше порога ===
+                                                            QUERY PLAN                                                            
+----------------------------------------------------------------------------------------------------------------------------------
+ Bitmap Heap Scan on camera  (cost=11.05..516.86 rows=309 width=40) (actual time=0.136..0.692 rows=306 loops=1)
+   Recheck Cond: (((last_heartbeat_at IS NULL) AND active) OR ((last_heartbeat_at < (now() - '00:10:00'::interval)) AND active))
+   Filter: ((last_heartbeat_at IS NULL) OR (last_heartbeat_at < (now() - '00:10:00'::interval)))
+   Heap Blocks: exact=301
+   Buffers: shared hit=303 read=2 written=1
+   ->  BitmapOr  (cost=11.05..11.05 rows=309 width=0) (actual time=0.091..0.092 rows=0 loops=1)
+         Buffers: shared hit=2 read=2 written=1
+         ->  Bitmap Index Scan on ix_camera_stale  (cost=0.00..4.33 rows=6 width=0) (actual time=0.062..0.062 rows=6 loops=1)
+               Index Cond: (last_heartbeat_at IS NULL)
+               Buffers: shared read=2 written=1
+         ->  Bitmap Index Scan on ix_camera_stale  (cost=0.00..6.56 rows=303 width=0) (actual time=0.029..0.029 rows=300 loops=1)
+               Index Cond: (last_heartbeat_at < (now() - '00:10:00'::interval))
+               Buffers: shared hit=2
+ Planning:
+   Buffers: shared hit=14 read=4 written=2
+ Planning Time: 0.753 ms
+ Execution Time: 0.734 ms
+(17 rows)
+

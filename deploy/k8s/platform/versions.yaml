@@ -1,0 +1,16 @@
+# Закреплённые версии платформенных компонентов (обновляются PR'ом, drift.yml сравнивает с кластером)
+rke2: v1.33.5+rke2r1
+ingress-nginx: 4.13.2
+cert-manager: v1.18.2
+kube-prometheus-stack: 77.5.0
+prometheus-adapter: 4.14.1
+external-secrets: 0.19.2
+kyverno: 3.5.1
+loki: 6.36.0
+opentelemetry-collector: 0.132.0
+vault: 1.20.4
+patroni: 4.0.6
+postgresql: 16.10
+pgbouncer: 1.25.1
+pgbackrest: 2.56.0
+minio: RELEASE.2025-09-07T16-13-09Z

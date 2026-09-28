@@ -1,0 +1,7 @@
+- name: etcd 3.5
+  ansible.builtin.apt: {name: etcd-server, state: present}
+- name: Конфигурация (TLS, 3 члена)
+  ansible.builtin.template: {src: ../../../postgres/etcd.conf.yml.j2, dest: /etc/etcd/etcd.conf.yml, owner: etcd, mode: "0640"}
+  notify: restart etcd
+- name: Сервис
+  ansible.builtin.systemd: {name: etcd, enabled: true, state: started}

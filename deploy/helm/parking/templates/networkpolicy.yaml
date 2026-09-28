@@ -1,0 +1,143 @@
+{{- if .Values.networkPolicy.enabled }}
+{{- $root := . -}}
+{{- $np := .Values.networkPolicy -}}
+{{- $workers := list "publisher" "consumer" "replayer" "camera-health" "webhooks" "celery-beat" -}}
+{{- range $name, $pool := .Values.celery.pools }}
+{{- $workers = append $workers (printf "celery-%s" $name) }}
+{{- end }}
+# --- default deny: всё запрещено, разрешения ниже явные (§2) -----------------------------------
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "parking.fullname" . }}-default-deny
+  labels:
+    {{- include "parking.labels" . | nindent 4 }}
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+---
+# DNS для всех подов релиза
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "parking.fullname" . }}-allow-dns
+  labels:
+    {{- include "parking.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels: {kubernetes.io/metadata.name: kube-system}
+          podSelector:
+            matchLabels: {k8s-app: kube-dns}
+      ports:
+        - {protocol: UDP, port: 53}
+        - {protocol: TCP, port: 53}
+---
+# API: входящие только от ingress-контроллера, фронтенда (proxy /api,/ws) и Prometheus; исходящие — к зависимостям
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "parking.fullname" . }}-api
+  labels:
+    {{- include "parking.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/component: api
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels: {kubernetes.io/metadata.name: {{ $np.ingressNamespace }}}
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/instance: {{ .Release.Name }}
+              app.kubernetes.io/component: frontend
+        - namespaceSelector:
+            matchLabels: {kubernetes.io/metadata.name: {{ $np.monitoringNamespace }}}
+      ports:
+        - {protocol: TCP, port: {{ .Values.api.service.port }}}
+  egress:
+    {{- include "parking.dependencyEgress" (dict "np" $np "providers" true "barriers" true "minio" true) | nindent 4 }}
+    # v2 этап 7: дашборд владельца платформы читает Prometheus (PromQL)
+    - to:
+        - namespaceSelector:
+            matchLabels: {kubernetes.io/metadata.name: {{ $np.monitoringNamespace }}}
+      ports:
+        - {protocol: TCP, port: 9090}
+---
+# Воркеры и Celery: входящих нет, кроме scrape Prometheus; исходящие — БД, Redis, MinIO, шлагбаумы, провайдеры
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "parking.fullname" . }}-workers
+  labels:
+    {{- include "parking.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/instance: {{ .Release.Name }}
+    matchExpressions:
+      - {key: app.kubernetes.io/component, operator: In, values: {{ toJson $workers }}}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels: {kubernetes.io/metadata.name: {{ $np.monitoringNamespace }}}
+      ports:
+        - {protocol: TCP, port: {{ .Values.config.metricsPort }}}
+  egress:
+    {{- include "parking.dependencyEgress" (dict "np" $np "providers" true "barriers" true "minio" true) | nindent 4 }}
+---
+# Frontend (nginx): входящие от ingress; исходящие — только к API (proxy /api и /ws). В PostgreSQL/Redis не ходит.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "parking.fullname" . }}-frontend
+  labels:
+    {{- include "parking.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/component: frontend
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels: {kubernetes.io/metadata.name: {{ $np.ingressNamespace }}}
+        - namespaceSelector:
+            matchLabels: {kubernetes.io/metadata.name: {{ $np.monitoringNamespace }}}
+      ports:
+        - {protocol: TCP, port: {{ .Values.frontend.service.port }}}
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/instance: {{ .Release.Name }}
+              app.kubernetes.io/component: api
+      ports:
+        - {protocol: TCP, port: {{ .Values.api.service.port }}}
+---
+# Миграции: только PostgreSQL
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "parking.fullname" . }}-migrate
+  labels:
+    {{- include "parking.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/component: migrate
+  policyTypes: [Ingress, Egress]
+  egress:
+    {{- include "parking.dependencyEgress" (dict "np" $np "providers" false "barriers" false "minio" false "noRedis" true) | nindent 4 }}
+{{- end }}

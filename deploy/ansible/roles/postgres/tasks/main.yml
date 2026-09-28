@@ -1,0 +1,4 @@
+- name: Репозиторий PGDG и пакеты (сервер ставит роль patroni; здесь — клиентские утилиты для verify-ВМ)
+  ansible.builtin.apt: {name: [postgresql-client-16, postgresql-16], state: present}
+- name: Отключить дистрибутивный кластер (Patroni управляет data_dir сам)
+  ansible.builtin.systemd: {name: postgresql, enabled: false, state: stopped}

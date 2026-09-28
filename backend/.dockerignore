@@ -1,0 +1,13 @@
+# в контекст сборки попадают только манифесты, src, alembic — тесты, секреты, локальные данные и кеши исключены
+*
+!pyproject.toml
+!uv.lock
+!README.md
+!alembic.ini
+!alembic/
+!src/
+src/**/__pycache__/
+alembic/**/__pycache__/
+**/.env*
+**/*.pem
+**/*.key

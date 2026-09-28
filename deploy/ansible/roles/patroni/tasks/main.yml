@@ -1,0 +1,18 @@
+- name: Пакеты PostgreSQL 16 и Patroni (PGDG)
+  ansible.builtin.apt:
+    name: [postgresql-16, postgresql-contrib-16, patroni, python3-etcd3, python3-psycopg2]
+    state: present
+- name: Каталоги и TLS
+  ansible.builtin.file: {path: /etc/patroni, state: directory, owner: postgres, mode: "0750"}
+- name: Конфигурация Patroni
+  ansible.builtin.template: {src: ../../../postgres/patroni.yml.j2, dest: /etc/patroni/patroni.yml, owner: postgres, mode: "0600"}
+  notify: restart patroni
+- name: post_bootstrap (расширения)
+  ansible.builtin.copy:
+    dest: /etc/patroni/post_bootstrap.sh
+    mode: "0755"
+    content: |
+      #!/bin/sh
+      psql -d postgres -c "CREATE EXTENSION IF NOT EXISTS pg_stat_statements" -c "CREATE EXTENSION IF NOT EXISTS amcheck"
+- name: systemd
+  ansible.builtin.systemd: {name: patroni, enabled: true, state: started, daemon_reload: true}

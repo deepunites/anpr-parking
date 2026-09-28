@@ -1,0 +1,35 @@
+# HAProxy перед Patroni: :5000 → primary (GET /primary), :5001 → реплики (GET /replica). Проверки — REST Patroni, не «ping».
+global
+    maxconn 4000
+    log /dev/log local0
+defaults
+    mode tcp
+    log global
+    option tcplog
+    retries 2
+    timeout connect 3s
+    timeout client 30m
+    timeout server 30m
+    timeout check 2s
+listen stats
+    mode http
+    bind *:7000
+    stats enable
+    stats uri /
+listen primary
+    bind *:5000
+    option httpchk GET /primary
+    http-check expect status 200
+    default-server inter 2s fall 3 rise 2 on-marked-down shutdown-sessions   # смена лидера рвёт сессии к старому primary
+{% for h in pg_hosts %}
+    server {{ h }} {{ h }}:5432 check port 8008 check-ssl ca-file /etc/haproxy/ca.crt
+{% endfor %}
+listen replicas
+    bind *:5001
+    balance roundrobin
+    option httpchk GET /replica
+    http-check expect status 200
+    default-server inter 2s fall 3 rise 2 on-marked-down shutdown-sessions
+{% for h in pg_hosts %}
+    server {{ h }} {{ h }}:5432 check port 8008 check-ssl ca-file /etc/haproxy/ca.crt
+{% endfor %}

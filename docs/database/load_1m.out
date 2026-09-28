@@ -1,0 +1,75 @@
+Timing is on.
+psql:scripts/load_1m.sql:5: NOTICE:  truncate cascades to table "reconciliation_discrepancy"
+TRUNCATE TABLE
+Time: 2663,133 ms (00:02,663)
+DELETE 0
+Time: 6,380 ms
+ ensure_range_partitions 
+-------------------------
+                       0
+(1 row)
+
+Time: 7,969 ms
+ ensure_range_partitions 
+-------------------------
+                       0
+(1 row)
+
+Time: 2,747 ms
+ ensure_range_partitions 
+-------------------------
+                       0
+(1 row)
+
+Time: 1,801 ms
+ ensure_range_partitions 
+-------------------------
+                       0
+(1 row)
+
+Time: 0,956 ms
+INSERT 0 200000
+Time: 14064,598 ms (00:14,065)
+INSERT 0 100000
+Time: 6394,619 ms (00:06,395)
+SELECT 3
+Time: 2,586 ms
+SELECT 300000
+Time: 943,589 ms
+CREATE INDEX
+Time: 346,751 ms
+ALTER TABLE
+Time: 1,026 ms
+UPDATE 3
+Time: 154,247 ms
+ANALYZE
+Time: 105,691 ms
+ANALYZE
+Time: 1,298 ms
+INSERT 0 1000000
+Time: 221915,023 ms (03:41,915)
+INSERT 0 1000000
+Time: 91629,439 ms (01:31,629)
+INSERT 0 1000000
+Time: 20116,225 ms (00:20,116)
+INSERT 0 985000
+Time: 319962,171 ms (05:19,962)
+INSERT 0 200000
+Time: 12601,074 ms (00:12,601)
+INSERT 0 100
+Time: 16,483 ms
+INSERT 0 100000
+Time: 5462,468 ms (00:05,462)
+DROP TABLE
+Time: 17,073 ms
+DROP TABLE
+Time: 4,242 ms
+VACUUM
+Time: 36431,494 ms (00:36,431)
+ vehicles | sessions | active | events  |  idem   | payments | outbox | rules  
+----------+----------+--------+---------+---------+----------+--------+--------
+   300000 |  1000000 |  15000 | 1000000 | 1000000 |   985000 | 200100 | 100004
+(1 row)
+
+Time: 1749,635 ms (00:01,750)
+exit=0

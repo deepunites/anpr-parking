@@ -1,0 +1,7 @@
+# ansible-galaxy install -r requirements.yml
+collections:
+  - name: community.hashi_vault
+  - name: community.postgresql
+roles:
+  - name: prometheus.prometheus            # node_exporter, postgres_exporter (роли node_exporter/postgres_exporter из коллекции)
+    src: https://github.com/prometheus-community/ansible

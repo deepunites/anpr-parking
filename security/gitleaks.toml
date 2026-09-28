@@ -1,0 +1,33 @@
+# gitleaks dir . --config security/gitleaks.toml  (репозитория нет — сканируется файловая система; в CI — вся история)
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Артефакты окружения и фикстуры тестов (фейковые ключи/JWT/PEM-заглушки); пересмотр — security/exceptions.yaml"
+paths = [
+  '''backend/\.venv''',
+  '''frontend/node_modules''',
+  '''backend/mutants''',
+  '''backend/\.pgdata''',
+  '''backend/\.failure-lab''',
+  '''backend/\.e2e''',
+  '''backend/\.minio-data''',
+  '''backend/\.minio-data-replica''',
+  '''backend/\.pgha''',
+  '''deploy/terraform/.*/\.terraform/''',
+  '''backend/\.redis-data''',
+  '''frontend/dist''',
+  '''backend/\.env\.dev''',
+  '''__pycache__''',
+]
+regexes = [
+  '''correct-horse-battery-staple''',
+  '''eyJhbGciOiJIUzI1NiJ9\.eyJzdWIiOiIxMjM0NTY3ODkwIn0''',
+  '''-----BEGIN (PRIVATE|PUBLIC) KEY-----x-----END''',
+  '''devkey8f3a0c1e5b7d9a2c4e6f8a0b1c3d5e7f9a1b3c5d7e9f1a2b''',
+  '''cam_a1_k7Qm3ZxV9pL2sN8bT4wY6uH1jR5cE0dFgA3B''',
+  '''0123456789abcdef0123456789abcdef''',
+  '''valid_to=NOW''',
+  '''eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9''',
+  '''-----BEGIN PRIVATE KEY-----"\)''',
+]

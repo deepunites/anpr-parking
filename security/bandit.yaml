@@ -1,0 +1,9 @@
+# bandit -c security/bandit.yaml -r backend/src
+# Пропуски обоснованы в security/exceptions.yaml (с датой пересмотра).
+skips:
+  - B101   # assert как внутренний инвариант (не валидация входа); см. exceptions.yaml
+  - B608   # f-строки SQL интерполируют только константы колонок/скоупа; параметры — bind; см. exceptions.yaml
+exclude_dirs:
+  - tests
+  - mutants
+  - .venv

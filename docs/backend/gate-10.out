@@ -1,0 +1,96 @@
+# Gate фазы 10 (production review) — 2026-09-20T11:33Z, рабочая станция без root/Docker (PostgreSQL 16.2 pgserver + contrib, Redis 7 + Sentinel из .redis/bin, MinIO; helm/kubeconform/tofu/promtool/trivy/gitleaks в ~/.local)
+
+$ uv run ruff check . && uv run ruff format --check .   (повторено после правки platform/http/client.py и vault_keys.py)
+All checks passed!
+352 files already formatted
+
+$ uv run mypy --strict src/
+Success: no issues found in 202 source files
+
+$ uv run pytest -q   (полный прогон по умолчанию; новое в фазе 10: tests/privacy/test_erasure.py ×2, tests/platform/test_vault_keys.py ×2, test_shutdown::test_supervisor_restarts_loop…, test_health::test_dependency_outage_is_503_not_500, RBAC/матрица для /privacy)
+Первый прогон: 1 failed, 481 passed — tests/invariants/test_i09_no_http_in_transaction.py::test_every_httpx_client_is_created_through_guarded_factory: VaultKeyProvider создавал httpx.Client напрямую (I-9 статически). Исправлено: make_sync_client + GuardedSyncTransport в platform/http/client.py. Повторный прогон:
+GATE 100 parallel identical events: 1 session 93c9a0b9-419b-4f66-a4ff-41b0f2e3eb2e, responses identical, duplicates=99
+GATE clock skew: accepted, clock_skew_seconds=599 (max 120 → marked)
+GATE replay: month-old event → 422 REPLAY
+GATE image key: foreign tenant/camera/traversal → 422 INVALID_IMAGE_KEY; own key → 200
+GATE blacklist: ENTRY_DENIED, session b1b6e63e-b293-4526-b61a-cd6b4fecb50f MANUAL_REVIEW, barrier commands = 0
+GATE offline: pg_ctl stop → 10×202 queued=true, XLEN anpr:offline = 11, breaker=open
+GATE replay: processed=11 duplicates=1; anpr_event +10, sessions +10, queued_offline rows=10, offline barrier audit=10
+GATE xautoclaim: 5 pending от убитого consumer'а подобраны, потерь нет (5/5 в anpr_event)
+GATE dlq: 3 попытки → anpr:dlq; GET /admin/dlq; replay dry_run не меняет; replay → anpr:offline, аудит DLQ_REPLAY
+GATE ws: auth first message, Pub/Sub delivery, lot isolation, ping/pong, re-auth without disconnect
+GATE ws isolation: tenant B → 4404 on tenant A lot; scoped operator → 4404 outside scope
+GATE ws backpressure: 100 OCCUPANCY → 1 (latest), ENTRY overflow dropped=11 + GAP, SESSION_* overflow → close 1013
+GATE I-6: UPDATE/DELETE PAID payment rejected by trigger app.payment_guard
+GATE secrets: 0 provider secrets / card numbers in captured logs, payment_attempt, audit_log, webhook_inbox
+GATE provider timeout: create_calls=1, status_calls≥1, saga PAYMENT_PENDING_VERIFICATION → PAID via status()
+GATE barrier failure after payment: payment PAID kept, no refund, saga MANUAL_REVIEW
+GATE reconciliation: 5 kinds found, full report stored, MISSING_LOCAL→payment created, STATUS_MISMATCH→pulled, MISSING_REMOTE kept
+GATE refund > amount: code → 422 (refundable=1100000); DB trigger → CheckViolationError; REFUNDED derived
+GATE webhook vs cash race: cash=paid:CASH webhook=performed method=CASH
+GATE webhook ×5: one PAID, one confirmed event, identical responses
+GATE bad signature: -32504, audit WEBHOOK_REJECTED (actor PROVIDER)
+GATE duplicate provider payment: second PAID payment + DUPLICATE_REMOTE discrepancy (refund queue)
+GATE orphan webhook: ORPHAN → APPLIED after payment appeared, one confirmed event
+GATE barrier breaker log:
+GATE camera-auth timing (ms): wrong median=0.433 p95=0.972; missing median=0.397 p95=0.942; ratio=1.09
+GATE camera health: UNKNOWN→ONLINE→OFFLINE→SILENT, flushed heartbeats=1
+GATE media: presigned POST ok=204, oversize=400 EntityTooLarge, executable type=403, key hijack=403; presigned GET 200
+GATE mc ilm rule ls local/anpr-media:
+GATE privacy: REQUESTED→IDENTITY_VERIFIED→LEGAL_RETENTION_CHECK→ANONYMIZATION→MEDIA_DELETION→AUDIT→COMPLETED; vehicle/events анонимизированы, MinIO 534d3f5b-096c-486d-a8e7-cc53279a427b.jpg — 0 версий, дамп БД без номера/хеша, выру
+GATE timing (ms): median first-byte=4.96 last-byte=4.89 unknown-prefix=4.81; p90 first=6.12 last=6.22 unknown=6.01 (n=120 на класс)
+482 passed, 2 skipped, 25 deselected, 4 warnings in 267.60s (0:04:27)
+
+$ uv run pytest tests/failure/test_redis_sentinel.py -m failure -s   (Redis HA: master + replica + 3 Sentinel на локальных бинарниках)
+GATE redis sentinel failover: master :6395 killed → new master :6396; same client writes again after 2.5s (12 failed attempts); data before failover present
+2 passed in 10.01s
+
+$ PARKING_ENV=dev uv run alembic upgrade head && uv run alembic downgrade base && uv run alembic upgrade head   (0014: deletion_request.vehicle_ids + app.anonymize_vehicles)
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+INFO  [alembic.runtime.migration] Running downgrade 0014 -> 0013, Фаза 10 §3: deletion_request.vehicle_ids — машины субъекта для шагов анонимизации и удаления медиа
+INFO  [alembic.runtime.migration] Running downgrade 0002 -> 0001, Tenancy и Identity: tenant, parking_lot, parking_spot, app_user, user_lot, refresh_token, login_attempt
+INFO  [alembic.runtime.migration] Running downgrade 0001 -> , Фундамент: btree_gist, схема app, роли, enum-типы, служебные функции
+INFO  [alembic.runtime.migration] Running upgrade 0013 -> 0014, Фаза 10 §3: deletion_request.vehicle_ids — машины субъекта для шагов анонимизации и удаления медиа
+alembic current: 0014 (head)
+
+$ uv run python scripts/export_openapi.py && uv run python scripts/export_events.py && npm run check:api   (6 эндпоинтов /api/v1/privacy/*)
+written /home/deep/projects/anpr-parking/docs/openapi.json
+written /home/deep/projects/anpr-parking/docs/EVENTS.md (27 events)
+src/api/schema.d.ts устарел относительно docs/openapi.json — выполните npm run gen:api
+$ (cd frontend && npm run gen:api && npm run check:api && npx tsc --noEmit)   (типы фронтенда пересобраны под /privacy)
+🚀 ../docs/openapi.json → src/api/schema.d.ts [760.6ms]
+api types are in sync with docs/openapi.json
+tsc: ok
+privacy paths in openapi.json: 5 (6 операций: POST+GET /requests, GET /{id}, POST verify/process/reject)
+
+$ promtool check rules deploy/prometheus/alerts.yaml && promtool test rules deploy/prometheus/alerts_test.yaml   (PostgresDiskAlmostFull → #postgres-disk)
+check: SUCCESS: 25 rules found
+test:  SUCCESS
+$ diff deploy/prometheus/alerts.yaml deploy/helm/parking/rules/alerts.yaml → identical
+
+$ helm lint deploy/helm/parking --strict --set image.tag=0.9.0-abcdef1; helm template ×3 | kubeconform -strict -kubernetes-version 1.33.0   (NetworkPolicy: Redis 6379+26379, ingress limit-rps, Vault env/CA)
+1 chart(s) linted, 0 chart(s) failed
+values.yaml            Summary: 50 resources found parsing stdin - Valid: 46, Invalid: 0, Errors: 0, Skipped: 4
+values-staging.yaml    Summary: 50 resources found parsing stdin - Valid: 46, Invalid: 0, Errors: 0, Skipped: 4
+values-sandbox.yaml    Summary: 42 resources found parsing stdin - Valid: 42, Invalid: 0, Errors: 0, Skipped: 0
+
+$ tofu fmt -check -recursive deploy/terraform && tofu validate (envs/production, envs/staging) && tofu test (envs/staging, моки)   (module.redis ×3 зоны, MinIO 16 ТБ)
+fmt ok
+production  Success! The configuration is valid.
+staging     Success! The configuration is valid.
+Success! 2 passed, 0 failed.
+
+$ backend/.venv/bin/python scripts/security_scan.py   (bandit, pip-audit, npm audit, trivy fs, gitleaks, semgrep)
+exceptions.yaml: ok
+bandit     PASS  0 issues total, 0 medium/high
+pip-audit  PASS  No known vulnerabilities found
+npm-audit  PASS  info=0, low=0, moderate=0, high=0, critical=0, total=0
+trivy      PASS  0 critical/high findings
+gitleaks   PASS  [90m4:41PM[0m [32mINF[0m [1mno leaks found[0m
+semgrep    PASS  61 findings, 0 blocking (не в exceptions.yaml)
+
+$ uv run pytest tests/observability/test_alerts_and_dashboards.py -q   (якоря runbook для всех алертов)
+7 passed in 0.66s
+
+# Документы фазы: docs/RUNBOOK.md (773 строк, часть A — 15 сценариев, часть C — 3 учения с логами), docs/THREAT_MODEL.md (24 угрозы, каждая митигация с file:line), docs/PRIVACY.md, docs/COST.md, docs/PRODUCTION_READINESS.md (6 разделов + чек-лист со ссылками), docs/ASSUMPTIONS.md (74 допущения: открыто — заказчик — 17; открыто — юрист — 2; открыто — staging — 8; подтверждено — 43; снято — 4)
+ALL DONE 11:41:36Z

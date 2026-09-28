@@ -1,0 +1,133 @@
+# Gate фазы 9 (инфраструктура, CI/CD, восстановление) — 2026-09-20T10:08Z, рабочая станция без root/Docker: rootless podman-static, helm 3.19, kubeconform 0.7, OpenTofu 1.10.6, Patroni 3.3.7 (uvx), PgBouncer 1.25.1 (deb), PostgreSQL 16.2 (pgserver + contrib), MinIO
+
+
+$ podman build -t parking-backend:0.9.0-sandbox backend/ && podman build -t parking-frontend:0.9.0-sandbox frontend/   (многостадийные, alpine, non-root, без uv/pip/компиляторов)
+localhost/parking-frontend:0.9.0-sandbox 22.7 MB
+localhost/parking-backend:0.9.0-sandbox 240 MB
+backend: user=10001:10001 cmd=[uvicorn parking.api.main:app --host 0.0.0.0 --port 8000 --workers 1 --timeout-keep-alive 75 --no-server-header]
+frontend: user=101
+
+$ trivy image --input <docker-archive> --scanners vuln,secret --severity CRITICAL,HIGH,MEDIUM,LOW
+trivy backend: os=alpine 3.22.4, vulnerabilities=0, secrets=0
+trivy frontend: os=alpine 3.23.4, vulnerabilities=0, secrets=0
+(сравнение баз: slim-bookworm 5 CRITICAL unfixed; slim-trixie 0/44 HIGH unfixed; distroless-debian13 0/21 HIGH unfixed; alpine3.22 после apk upgrade 0/0 — INFRA §1)
+
+$ podman run --read-only --tmpfs /tmp --cap-drop ALL --security-opt no-new-privileges --network host localhost/parking-backend:0.9.0-sandbox   (env из стенда, PostgreSQL по TCP-мосту)
+GET /health/live → {"status":"ok"}
+GET /health/ready → {"status":"ok","checks":{"postgresql":"ok"}} 200   (после фазы 9 readiness добавляет redis, tests/api/test_health.py)
+id → uid=10001(app) gid=10001(app); touch /app/x → Read-only file system; gcc/uv/pip отсутствуют
+
+$ helm lint deploy/helm/parking --strict --set image.tag=0.9.0-abcdef1 (default / values-staging / values-sandbox)
+1 chart(s) linted, 0 chart(s) failed ×3
+$ helm template … --set image.tag=latest
+Error: execution error at (parking/templates/workers.yaml:3:3): image.tag must be {semver}-{git-sha} in production, got "latest"
+$ helm template ×3 | kubeconform -strict -ignore-missing-schemas -kubernetes-version 1.33.0
+Summary: 142 resources found in 3 files - Valid: 134, Invalid: 0, Errors: 0, Skipped: 8
+рендер production: 10 Deployment, 10 PodDisruptionBudget, 6 NetworkPolicy, 1 HPA, 1 ExternalSecret, 1 Job (migrate), 11 ServiceAccount, 2 Service, 1 Ingress, ServiceMonitor+PodMonitor, PrometheusRule, 4 ConfigMap дашбордов; проверка манифестов: runAsNonRoot/seccomp/no-priv-esc/drop ALL/readOnlyRoot/resources/grace/automount=false/antiAffinity — 0 нарушений, deployments без PDB — 0
+
+$ tofu fmt -check -recursive && tofu init -backend=false && tofu validate   (envs/staging, envs/production)
+Success! The configuration is valid. ×2
+$ tofu test   (envs/staging, mock_provider proxmox/dns/minio/vault/tls)
+  run "three_zones_for_k8s_and_postgres"... pass
+  run "backups_bucket_is_locked_and_versioned"... pass
+
+Success! 2 passed, 0 failed.
+
+$ uv run python ../deploy/postgres/lab/pgha_lab.py start   (Patroni ×3: primary + sync standby + async standby [nosync], raft DCS; leader_proxy :5500 ≈ HAProxy; PgBouncer :6432 transaction; WAL-архив в MinIO)
+pg1  leader         running    tl=1
+pg2  sync_standby   streaming  lag=0 tl=1
+pg3  replica        running    tl=1
+proxy: up, pgbouncer: up
+shared_preload_libraries = pg_stat_statements,auto_explain; auto_explain.log_min_duration = 500ms
+
+$ uv run python ../deploy/postgres/lab/pgha_lab.py pooler-test   (tests/db/test_pgbouncer_rls.py через PgBouncer transaction pooling)
+GATE pgbouncer RLS: 160 транзакций через transaction pooling, утечек tenant-контекста 0
+.GATE pgbouncer trap: session-level SET утёк в 40/40 новых клиентских соединений
+2 passed in 2.55s
+
+$ PARKING_E2E_DSN=postgresql://postgres@127.0.0.1:6432/postgres uv run pytest tests/e2e -m e2e   (приложение на Patroni через PgBouncer)
+GATE e2e full path: entry → barrier open → exit → quote 1000000 → cash → saga COMPLETED → barrier open → CLOSED → outbox PUBLISHED × 2 → visible in API
+8 passed in 62.45s (0:01:02)
+
+$ uv run python ../deploy/postgres/lab/pgha_lab.py failover   (kill -9 postmaster + агента primary под потоком записей через прокси)
+kill -9 postmaster of pg1 (pid 65762) at 08:59:18
+GATE patroni failover: old primary pg1 killed → new primary pg2; writes ok=322 failed=93; RTO (kill → first successful write via proxy) = 19.2s; rows before 0, after 322 (ok-count consistent: True)
+pg2  leader         running    lag=- tl=2
+pg3  replica        streaming  lag=0 tl=2
+restarting pg1 as replica…
+pg1  replica        running    lag=0 tl=2
+pg2  leader         running    lag=- tl=2
+pg3  replica        streaming  lag=0 tl=2
+
+$ PGHA_DB=parking_e2e uv run python ../deploy/postgres/lab/pgha_lab.py verify   (еженедельная проверка: restore → pg_amcheck → контрольные суммы → метрика)
+GATE backup 20260920T092146Z: 3.5 MB → MinIO pg-backups/lab/base/20260920T092146Z/ in 5.7s
+GATE backup verify: backup 20260920T092146Z restored in 17.3s; pg_amcheck rc=0; checksums source={'sessions_today': 10, 'payments_sum_today': Decimal('1.00E+6'), 'sessions_total': 10, 'payments_total': 6, 'outbox_total': 58} restored={'sessions_today': 10, 'payments_sum_today': Decimal('1.00E+6'), 'sessions_total': 10, 'payments_total': 6, 'outbox_total': 58} match=True → backup_restore_verified_timestamp=1789896131 (/home/deep/projects/anpr-parking/backend/.pgha/textfile/backup_restore_verified.prom)
+backup_restore_verified_timestamp{cluster="parking-lab"} 1789896131   (backend/.pgha/textfile/backup_restore_verified.prom)
+
+$ PGHA_DB=parking_e2e uv run python ../deploy/postgres/lab/pgha_lab.py pitr   (учение: восстановление в произвольную точку, замер RTO)
+GATE backup 20260920T092211Z: 3.5 MB → MinIO pg-backups/lab/base/20260920T092211Z/ in 2.9s
+GATE PITR: target=2026-09-20 09:22:16.243253+00:00; source rows total=6, ≤target=3; restored instance rows=3, after-target rows=0 (must be 0); restore RTO=14.6s (wall 14.7s), SLO 15 min
+
+$ mc version enable / mc replicate add local/pg-backups → replica (второй MinIO :9010)   (бэкап MinIO §4)
+versioning: local/pg-backups versioning is enabled | replica/pg-backups-replica versioning is enabled
+replicate add: Replication configuration rule applied to local/pg-backups successfully.
+replica has probe: True
+GATE minio backup: versioning Enabled on both buckets, bucket replication local→replica active; base-backup objects source=10 replica=2
+
+$ uv run python scripts/migration_check.py --dsn postgresql://postgres@/postgres?host=…/.pgdata   (копия схемы, время + pg_locks + статический разбор ALTER)
+0013: 1.15s ok
+--- синтетическая опасная миграция (ALTER TABLE parking_session ALTER COLUMN version TYPE bigint):
+blocked (static): 0013: ALTER TABLE parking_session требует ACCESS EXCLUSIVE — 'ALTER TABLE parking_session ALTER COLUMN version TYPE bigint'
+
+$ uv run python scripts/smoke_staging.py --stack   (смоук после деплоя: реальное camera-событие, полный путь; на стенде e2e_stack.py)
+SMOKE OK smoke-20260920T093350: http://127.0.0.1:8010 ENTRY→ACTIVE→EXIT→EXIT_CONFIRMED→CLOSED, payments=1, exit_kind=CAMERA, 1.8s
+
+$ uv run ruff check . && uv run ruff format --check .
+All checks passed!
+335 files already formatted
+
+$ uv run mypy --strict src/
+Success: no issues found in 190 source files
+
+$ uv run pytest -q   (полный прогон; новое: test_health ×3, test_shutdown ×2, test_no_session_level_set…; pooler-тесты skip без PARKING_POOLER_DSN — выполнены выше через лабораторию)
+470 passed, 2 skipped, 23 deselected, 4 warnings in 248.63s (0:04:08)
+
+$ PARKING_ENV=dev uv run alembic upgrade head && uv run alembic downgrade -1 && uv run alembic upgrade head   (0013 autovacuum-профили)
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+INFO  [alembic.runtime.migration] Running upgrade 0012 -> 0013, Фаза 9 §3: autovacuum-профили горячих таблиц (anpr_idempotency, outbox, consumer_inbox, anpr_event, webhook_inbox)
+
+$ uv run python scripts/export_openapi.py && uv run python scripts/export_events.py && npm run check:api
+written /home/deep/projects/anpr-parking/docs/openapi.json
+written /home/deep/projects/anpr-parking/docs/EVENTS.md (27 events)
+api types are in sync with docs/openapi.json
+
+$ promtool check rules deploy/prometheus/alerts.yaml && promtool test rules deploy/prometheus/alerts_test.yaml   (+ BackupRestoreVerifiedStale; копия в Helm идентична)
+  SUCCESS: 25 rules found
+Unit Testing:  deploy/prometheus/alerts_test.yaml
+  SUCCESS
+
+$ backend/.venv/bin/python scripts/security_scan.py   (секретов в git и образах нет: gitleaks dir + Trivy secret scan)
+exceptions.yaml: ok
+bandit     PASS  0 issues total, 0 medium/high
+pip-audit  PASS  No known vulnerabilities found
+npm-audit  PASS  info=0, low=0, moderate=0, high=0, critical=0, total=0
+trivy      PASS  0 critical/high findings
+gitleaks   PASS  3:02PM INF no leaks found
+semgrep    PASS  59 findings, 0 blocking (не в exceptions.yaml)
+
+## Чек-лист §7
+
+[x] docker build, образ прошёл Trivy без critical — backend 0/0, frontend 0/0 (вывод выше; в CI — container-scan --ignore-unfixed --exit-code 1)
+[x] helm lint и helm template чистые — lint --strict ×3, template 142 ресурса, kubeconform 0 invalid
+[~] terraform plan на staging без ошибок — validate + tofu test (mock providers) пройдены; настоящий plan требует доступов Proxmox/Vault/MinIO staging (drift.yml, A-66)
+[ ] кластер staging поднят, приложение работает, смоук пройден — кластера на рабочей станции нет (A-62); смоук-скрипт проверен на локальном стенде, деплой/смоук — cd.yml deploy-staging
+[ ] убит под API → трафик не потерян (замер во время k6) — scripts/chaos_kill_api.sh, job chaos-drill на staging (A-62)
+[x] убит primary PostgreSQL → автоматический failover, RTO замерен — Patroni lab: RTO 19.2 с, потерь подтверждённых записей 0, старый primary вернулся репликой
+[x] восстановление из бэкапа выполнено, контрольные суммы сошлись, RTO замерен — 17.3 с, pg_amcheck rc=0, суммы совпали (данные e2e-прогона)
+[x] PITR на произвольную точку выполнен — 3 из 6 строк-маркеров восстановлены до target, «после target» 0, RTO 14.6 с
+[x] PgBouncer transaction pooling: RLS-изоляция проверена тестом под пулером — 0 утечек / 160 транзакций; session-level SET утекает 40/40 (ловушка воспроизведена, статически запрещена); E2E 8/8 через пулер
+[ ] откат релиза выполнен в staging — scripts/rollback.sh + job rollback-drill (A-62); правило expand→migrate→contract и forward-fix — INFRA §5
+[ ] NetworkPolicy проверены живьём — политики отрендерены и валидны (default deny, фронтенд без egress к БД); проверка `frontend → PostgreSQL:6432` — в chaos_kill_api.sh на staging (A-62)
+[x] секретов в git и в образе нет — gitleaks PASS, Trivy secrets 0 (оба образа)
+[x] resources.requests и limits обоснованы замерами фазы 8 — INFRA §2 (RSS/CPU из docs/backend/load/*.json и profile-after.md)
+

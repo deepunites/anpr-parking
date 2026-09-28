@@ -1,0 +1,2 @@
+- name: restart etcd
+  ansible.builtin.systemd: {name: etcd, state: restarted}

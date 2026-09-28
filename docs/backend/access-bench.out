@@ -1,0 +1,55 @@
+Timing is on.
+Time: 61916,056 ms (01:01,916)
+Time: 1105,404 ms (00:01,105)
+ access_rules 
+--------------
+      1000004
+(1 row)
+
+=== вариант A: единая таблица, один запрос (ADR-03) ===
+                                                                                QUERY PLAN                                                                                 
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Index Scan using ix_access_lookup on access_rule  (cost=0.55..8.58 rows=1 width=76) (actual time=0.116..0.117 rows=1 loops=1)
+   Index Cond: ((tenant_id = '00000000-0000-4000-8000-0000000000a1'::uuid) AND (plate_hash = '\x15054c430b40914f1e63e7990de683cc11a941d99f42def0d244501c4de61e54'::bytea))
+   Filter: (((lot_id IS NULL) OR (lot_id = '00000000-0000-4000-8000-00000000a101'::uuid)) AND (validity @> now()))
+   Buffers: shared read=5 written=5
+ Planning:
+   Buffers: shared hit=33
+ Planning Time: 0.342 ms
+ Execution Time: 0.139 ms
+(8 rows)
+
+=== вариант B: четыре запроса по видам (эквивалент UNION ALL по четырём таблицам с тем же индексом) ===
+                                                                                   QUERY PLAN                                                                                    
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Append  (cost=0.55..34.34 rows=4 width=76) (actual time=0.024..0.038 rows=1 loops=1)
+   Buffers: shared hit=20
+   ->  Index Scan using ix_access_lookup on access_rule  (cost=0.55..8.58 rows=1 width=76) (actual time=0.015..0.015 rows=0 loops=1)
+         Index Cond: ((tenant_id = '00000000-0000-4000-8000-0000000000a1'::uuid) AND (plate_hash = '\x15054c430b40914f1e63e7990de683cc11a941d99f42def0d244501c4de61e54'::bytea))
+         Filter: (((lot_id IS NULL) OR (lot_id = '00000000-0000-4000-8000-00000000a101'::uuid)) AND (kind = 'BLACKLIST'::access_kind) AND (validity @> now()))
+         Rows Removed by Filter: 1
+         Buffers: shared hit=5
+   ->  Index Scan using ix_access_lookup on access_rule access_rule_1  (cost=0.55..8.58 rows=1 width=76) (actual time=0.008..0.009 rows=1 loops=1)
+         Index Cond: ((tenant_id = '00000000-0000-4000-8000-0000000000a1'::uuid) AND (plate_hash = '\x15054c430b40914f1e63e7990de683cc11a941d99f42def0d244501c4de61e54'::bytea))
+         Filter: (((lot_id IS NULL) OR (lot_id = '00000000-0000-4000-8000-00000000a101'::uuid)) AND (kind = 'VIP'::access_kind) AND (validity @> now()))
+         Buffers: shared hit=5
+   ->  Index Scan using ix_access_lookup on access_rule access_rule_2  (cost=0.55..8.58 rows=1 width=76) (actual time=0.006..0.006 rows=0 loops=1)
+         Index Cond: ((tenant_id = '00000000-0000-4000-8000-0000000000a1'::uuid) AND (plate_hash = '\x15054c430b40914f1e63e7990de683cc11a941d99f42def0d244501c4de61e54'::bytea))
+         Filter: (((lot_id IS NULL) OR (lot_id = '00000000-0000-4000-8000-00000000a101'::uuid)) AND (kind = 'SUBSCRIPTION'::access_kind) AND (validity @> now()))
+         Rows Removed by Filter: 1
+         Buffers: shared hit=5
+   ->  Index Scan using ix_access_lookup on access_rule access_rule_3  (cost=0.55..8.58 rows=1 width=76) (actual time=0.006..0.006 rows=0 loops=1)
+         Index Cond: ((tenant_id = '00000000-0000-4000-8000-0000000000a1'::uuid) AND (plate_hash = '\x15054c430b40914f1e63e7990de683cc11a941d99f42def0d244501c4de61e54'::bytea))
+         Filter: (((lot_id IS NULL) OR (lot_id = '00000000-0000-4000-8000-00000000a101'::uuid)) AND (kind = 'WHITELIST'::access_kind) AND (validity @> now()))
+         Rows Removed by Filter: 1
+         Buffers: shared hit=5
+ Planning:
+   Buffers: shared hit=4
+ Planning Time: 0.483 ms
+ Execution Time: 0.073 ms
+(25 rows)
+
+=== 1000 повторов каждого варианта, суммарное время ===
+psql:scripts/bench_access.sql:58: NOTICE:  A: единая таблица, 1000 запросов: 78 ms
+psql:scripts/bench_access.sql:58: NOTICE:  B: четыре подзапроса (UNION ALL), 1000 запросов: 84 ms
+DO

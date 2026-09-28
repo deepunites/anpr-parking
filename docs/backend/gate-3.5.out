@@ -1,0 +1,16 @@
+$ uv run ruff check . && uv run ruff format --check .
+All checks passed!
+199 files already formatted
+$ uv run mypy --strict src/
+Success: no issues found in 132 source files
+$ uv run pytest -q
+175 passed, 1 warning in 105.68s (0:01:45)
+$ uv run alembic upgrade head && uv run alembic downgrade -1 && uv run alembic upgrade head
+INFO  [alembic.runtime.migration] Running downgrade 0011 -> 0010, Обязательство (PENDING) не знает способа оплаты: method NULL до факта оплаты
+INFO  [alembic.runtime.migration] Running upgrade 0010 -> 0011, Обязательство (PENDING) не знает способа оплаты: method NULL до факта оплаты
+0011 (head)
+$ docs/openapi.json и docs/EVENTS.md сгенерированы из кода
+written /home/deep/projects/anpr-parking/docs/openapi.json
+written /home/deep/projects/anpr-parking/docs/EVENTS.md (20 events)
+$ uv run python scripts/openapi_compat.py docs/openapi.json docs/openapi.json
+compatible

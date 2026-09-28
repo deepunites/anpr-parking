@@ -1,0 +1,43 @@
+# Gate «SQL-бюджет camera-события» (долг §4 п.1) — 2026-09-20T21:39Z, та же рабочая станция без root/Docker (PostgreSQL 16 pgserver, Redis 7 :6390, MinIO)
+
+$ uv run ruff check . && uv run ruff format --check .
+All checks passed!
+355 files already formatted
+
+$ uv run mypy --strict src/
+Success: no issues found in 203 source files
+
+$ uv run pytest -q   (полный прогон по умолчанию, -m "not failure and not e2e"; новое: tests/anpr/test_sql_budget.py ×3, tests/shared/test_ttl_cache.py ×4)
+489 passed, 2 skipped, 25 deselected, 4 warnings in 292.19s (0:04:52)
+
+$ uv run pytest tests/e2e -m e2e -q   (стенд backend/scripts/e2e_stack.py: API + воркеры + фейковый шлагбаум; прогон после всех правок кода)
+8 passed in 45.89s
+
+$ uv run pytest tests/anpr/test_sql_budget.py -q -s   (перечень операторов установившегося режима — см. docs/backend/sql-budget.md)
+ENTRY: 10 SQL — set_config, pg_advisory_xact_lock, SELECT anpr_idempotency, INSERT vehicle (upsert), INSERT parking_session (ON CONFLICT … DO NOTHING RETURNING), INSERT barrier_command, INSERT anpr_event, INSERT anpr_idempotency, INSERT outbox (executemany) [+ SELECT access_rule для номера без решения в кешах]
+EXIT: 10 SQL — set_config, lock, SELECT anpr_idempotency, SELECT parking_session FOR UPDATE, SELECT exit_saga, SELECT payment (предоплата), INSERT exit_saga, INSERT anpr_event, INSERT anpr_idempotency, INSERT outbox
+Было (зонд до правок, холодный прогон): ENTRY 19 (10 SELECT, 7 INSERT, SAVEPOINT, RELEASE), EXIT 16 (12 SELECT, 4 INSERT)
+
+$ helm lint deploy/helm/parking --strict --set image.tag=0.9.0-abcdef1 (default / values-staging / values-sandbox); helm template ×3 | kubeconform -strict -ignore-missing-schemas -kubernetes-version 1.33.0
+1 chart(s) linted, 0 chart(s) failed
+Summary: 50 resources found parsing stdin - Valid: 46, Invalid: 0, Errors: 0, Skipped: 4
+1 chart(s) linted, 0 chart(s) failed
+Summary: 50 resources found parsing stdin - Valid: 46, Invalid: 0, Errors: 0, Skipped: 4
+1 chart(s) linted, 0 chart(s) failed
+Summary: 42 resources found parsing stdin - Valid: 42, Invalid: 0, Errors: 0, Skipped: 0
+PARKING_REFERENCE_CACHE_TTL_SECONDS в контейнерах: 10
+
+$ uv run python scripts/load_test.py --scenario baseline --scale 30 --rate-scale 5   (та же песочница и параметры, что baseline фазы 8; отчёт docs/backend/load/baseline-sql-budget.md)
+метрика                    фаза 8      после
+accepted                      721        721
+sessions_created              363        379
+camera_p95_ms              1651.8      688.2
+camera_p99_ms              2535.3     1174.4
+heartbeat_p95_ms            457.6      207.2
+exit_e2e_p95_s               9.62       4.29
+db_connections_max             35         32
+stream_lag_max                 52         29
+failed_5xx                      0          0
+lost                            0          0
+duplicate_sessions              0          0
+GATE sql budget: ENTRY 19 → 10, EXIT 16 → 10 SQL; одна транзакция на ENTRY; k6 baseline p95 1651.8 → 688.2 мс (−58 %), EXIT e2e p95 9.62 → 4.29 с; ошибок/потерь/дублей 0. Критерий ТЗ (p95 < 150 мс) на 2 vCPU песочнице по-прежнему не выполнен — замер на staging (A-49/A-62).

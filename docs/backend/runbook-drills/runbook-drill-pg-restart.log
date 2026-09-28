@@ -1,0 +1,75 @@
+### Runbook 1 «PostgreSQL primary недоступен» — Patroni ×3 (лаборатория) + приложение через PgBouncer :6432 → HAProxy-аналог :5500 — 2026-09-20T10:53:14Z
+
+$ uvx --from patroni[raft]==3.3.7 --with psycopg2-binary patronictl -c /home/deep/projects/anpr-parking/backend/.pgha/pg1/patroni.yml list
+  + Cluster: parking-lab (7687568474911101412) --------+----+-----------+--------------+
+  | Member | Host           | Role         | State     | TL | Lag in MB | Tags         |
+  +--------+----------------+--------------+-----------+----+-----------+--------------+
+  | pg1    | 127.0.0.1:5551 | Sync Standby | streaming |  1 |         0 |              |
+  | pg2    | 127.0.0.1:5552 | Leader       | running   |  1 |           |              |
+  | pg3    | 127.0.0.1:5553 | Replica      | streaming |  1 |         0 | nosync: true |
+  +--------+----------------+--------------+-----------+----+-----------+--------------+
+
+$ curl -s http://127.0.0.1:8010/health/ready
+  {"status":"ok","ready":true,"checks":{"postgresql":"ok","redis":"ok"}}
+
+$ camera_event 01G301AA
+  200 ENTRY_CONFIRMED queued=False
+
+--- отказ: kill -9 postmaster (98814) и агента Patroni (98756) primary=pg2 10:53:23
+
+$ kill -9 98814 98756
+
+$ curl -s -w ' %{http_code}' http://127.0.0.1:8010/health/ready
+  {"status":"degraded","ready":true,"checks":{"postgresql":"error: DBAPIError","redis":"ok"}} 200
+
+$ camera_event 01G302AA
+  202 QUEUED queued=True
+
+$ /home/deep/projects/anpr-parking/backend/.redis/bin/redis-cli -p 6390 -n 2 XLEN anpr:offline
+  1
+
+$ metric 'offline_mode_active'
+  offline_mode_active 0.0
+  (ждём автоматический failover: ttl 20 с / loop_wait 5 с в лаборатории; production ttl 30 / loop_wait 10)
+
+$ uvx --from patroni[raft]==3.3.7 --with psycopg2-binary patronictl -c /home/deep/projects/anpr-parking/backend/.pgha/pg1/patroni.yml list
+  + Cluster: parking-lab (7687568474911101412) -+----+-----------+--------------+
+  | Member | Host           | Role    | State   | TL | Lag in MB | Tags         |
+  +--------+----------------+---------+---------+----+-----------+--------------+
+  | pg1    | 127.0.0.1:5551 | Replica | running |  1 |         0 |              |
+  | pg2    | 127.0.0.1:5552 | Leader  | running |  1 |           |              |
+  | pg3    | 127.0.0.1:5553 | Replica | running |  1 |         0 | nosync: true |
+  +--------+----------------+---------+---------+----+-----------+--------------+
+
+$ curl -s -w ' %{http_code}' http://127.0.0.1:8010/health/ready
+  {"status":"ok","ready":true,"checks":{"postgresql":"ok","redis":"ok"}} 200
+
+$ camera_event 01G303AA
+  200 ENTRY_CONFIRMED queued=False
+
+$ /home/deep/projects/anpr-parking/backend/.redis/bin/redis-cli -p 6390 -n 2 XLEN anpr:offline
+  0
+
+$ /home/deep/projects/anpr-parking/backend/.venv/lib/python3.12/site-packages/pgserver/pginstall/bin/psql 'postgresql://postgres@127.0.0.1:6432/parking_e2e' -Atc "SELECT count(*) FILTER (WHERE queued_offline) AS replayed, count(*) AS total FROM anpr_event WHERE received_at > now() - interval '3 minutes'"
+  1|3
+
+$ curl -s http://127.0.0.1:9466/metrics | grep -E '^offline_replayed_total'
+  offline_replayed_total{result="ok"} 1.0
+
+--- возврат старого primary репликой 10:53:58
+
+$ cd /home/deep/projects/anpr-parking/backend && uv run python ../deploy/postgres/lab/pgha_lab.py status >/dev/null; uv run python -c "import sys; sys.path.insert(0,'../deploy/postgres/lab'); import pgha_lab as L; L.start_patroni('pg2'); L.wait_members(3); print(L.status())"
+  pg1  sync_standby   streaming  lag=0 tl=1
+  pg2  leader         running    lag=- tl=1
+  pg3  replica        streaming  lag=0 tl=1
+  proxy: up, pgbouncer: up
+
+$ uvx --from patroni[raft]==3.3.7 --with psycopg2-binary patronictl -c /home/deep/projects/anpr-parking/backend/.pgha/pg1/patroni.yml list
+  + Cluster: parking-lab (7687568474911101412) --------+----+-----------+--------------+
+  | Member | Host           | Role         | State     | TL | Lag in MB | Tags         |
+  +--------+----------------+--------------+-----------+----+-----------+--------------+
+  | pg1    | 127.0.0.1:5551 | Sync Standby | streaming |  1 |         0 |              |
+  | pg2    | 127.0.0.1:5552 | Leader       | running   |  1 |           |              |
+  | pg3    | 127.0.0.1:5553 | Replica      | streaming |  1 |         0 | nosync: true |
+  +--------+----------------+--------------+-----------+----+-----------+--------------+
+--- завершено: failover автоматический, потерь принятых событий нет (202 → replay), старый primary — реплика 10:54:04

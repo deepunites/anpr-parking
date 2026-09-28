@@ -1,0 +1,16 @@
+# values для чарта prometheus-community/prometheus-adapter: RPS на под API для HPA (values.yaml api.hpa.requestsPerSecondPerPod)
+prometheus:
+  url: http://kube-prometheus-stack-prometheus.observability.svc
+  port: 9090
+rules:
+  default: false
+  custom:
+    - seriesQuery: 'http_requests_total{namespace!="",pod!=""}'
+      resources:
+        overrides:
+          namespace: {resource: namespace}
+          pod: {resource: pod}
+      name:
+        matches: "^http_requests_total$"
+        as: "parking_http_requests_per_second"
+      metricsQuery: 'sum(rate(<<.Series>>{<<.LabelMatchers>>}[2m])) by (<<.GroupBy>>)'

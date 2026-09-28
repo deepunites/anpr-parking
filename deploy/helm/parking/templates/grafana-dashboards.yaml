@@ -1,0 +1,17 @@
+{{- if .Values.observability.grafanaDashboards.enabled }}
+{{- range $path, $bytes := .Files.Glob "dashboards/*.json" }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ printf "%s-dashboard-%s" (include "parking.fullname" $) (trimSuffix ".json" (base $path)) | trunc 63 | trimSuffix "-" }}
+  labels:
+    {{ $.Values.observability.grafanaDashboards.label }}: "1"
+    app.kubernetes.io/part-of: parking
+  annotations:
+    grafana_folder: {{ $.Values.observability.grafanaDashboards.folderAnnotation | quote }}
+data:
+  {{ base $path }}: |-
+{{ $.Files.Get $path | indent 4 }}
+{{- end }}
+{{- end }}

@@ -1,0 +1,13 @@
+$ uv run ruff check . && uv run ruff format --check .
+All checks passed!
+149 files already formatted
+$ uv run mypy --strict src/
+Success: no issues found in 96 source files
+$ uv run pytest -q
+142 passed, 1 warning in 50.87s
+$ uv run pytest -q tests/access -s (бенчмарк p95)
+access resolve p95: redis path 0.45 ms, local path 0.003 ms
+11 passed in 8.24s
+$ бенчмарк 1 млн правил (docs/backend/access-bench.out)
+A: единая таблица, 1000 запросов: 78 ms
+B: четыре подзапроса (UNION ALL), 1000 запросов: 84 ms

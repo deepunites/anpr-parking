@@ -1,0 +1,59 @@
+{{- if .Values.migrations.enabled }}
+# Миграции — до выкладки нового кода (pre-install/pre-upgrade). Правило релизов: миграции обратносовместимы
+# в пределах релиза (expand → migrate → contract в трёх релизах), поэтому откат кода `helm rollback` безопасен
+# без отката схемы (docs/INFRA.md §5).
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "parking.fullname" . }}-migrate-{{ include "parking.imageTag" . | replace "." "-" | trunc 20 | trimSuffix "-" }}
+  labels:
+    {{- include "parking.labels" . | nindent 4 }}
+    app.kubernetes.io/component: migrate
+  annotations:
+    helm.sh/hook: pre-install,pre-upgrade
+    helm.sh/hook-weight: "-5"
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: {{ .Values.migrations.backoffLimit }}
+  activeDeadlineSeconds: {{ .Values.migrations.activeDeadlineSeconds }}
+  ttlSecondsAfterFinished: 3600
+  template:
+    metadata:
+      labels:
+        {{- include "parking.labels" . | nindent 8 }}
+        app.kubernetes.io/component: migrate
+    spec:
+      restartPolicy: Never
+      terminationGracePeriodSeconds: 60   # alembic получит SIGTERM и откатит текущую транзакцию DDL
+      serviceAccountName: {{ include "parking.fullname" . }}-migrate
+      automountServiceAccountToken: false
+      securityContext:
+        {{- include "parking.podSecurityContext" . | nindent 8 }}
+      {{- with .Values.image.pullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: migrate
+          image: {{ include "parking.backendImage" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["alembic", "-c", "/app/alembic.ini", "upgrade", "head"]
+          env:
+            {{- include "parking.backendEnv" . | nindent 12 }}
+            - name: PARKING_METRICS_PORT
+              value: "0"
+          envFrom:
+            - secretRef:
+                name: {{ include "parking.secretName" . }}
+          securityContext:
+            {{- include "parking.containerSecurityContext" . | nindent 12 }}
+          resources:
+            {{- toYaml .Values.migrations.resources | nindent 12 }}
+          volumeMounts:
+            - {name: tmp, mountPath: /tmp}
+            {{- include "parking.caVolumeMount" . | nindent 12 }}
+      volumes:
+        - name: tmp
+          emptyDir: {sizeLimit: 64Mi}
+        {{- include "parking.caVolume" . | nindent 8 }}
+{{- end }}

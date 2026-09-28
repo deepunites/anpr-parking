@@ -1,0 +1,27 @@
+# Ansible для ВМ вне Kubernetes (CORE Q5: PostgreSQL под Patroni на ВМ Proxmox). Terraform создаёт ВМ и пишет inventory
+# (deploy/terraform/envs/<env>/inventory.ini через local_file), Ansible доводит их до состояния. Секреты — из Vault
+# (lookup community.hashi_vault), в git их нет.
+- name: PostgreSQL HA (etcd + Patroni + pgBackRest)
+  hosts: postgres
+  become: true
+  roles: [base, etcd, postgres, patroni, pgbackrest, prometheus.prometheus.node_exporter, prometheus.prometheus.postgres_exporter]
+
+- name: PgBouncer + HAProxy
+  hosts: pgbouncer
+  become: true
+  roles: [base, pgbouncer, prometheus.prometheus.node_exporter]
+
+- name: Redis + Sentinel (кворум 2/3; клиенты — redis+sentinel://)
+  hosts: redis
+  become: true
+  roles: [base, redis, prometheus.prometheus.node_exporter]
+
+- name: MinIO (site replication, versioning)
+  hosts: minio
+  become: true
+  roles: [base, minio, prometheus.prometheus.node_exporter]
+
+- name: Проверка бэкапов (изолированная ВМ)
+  hosts: backup_verify
+  become: true
+  roles: [base, postgres, pgbackrest_client, backup_verify]

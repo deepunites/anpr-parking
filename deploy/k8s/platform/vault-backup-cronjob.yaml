@@ -1,0 +1,39 @@
+# Бэкап конфигурации Vault (§4): снапшот Raft ежедневно в MinIO (бакет vault-snapshots, версионирование, object-lock 30 дней).
+# Восстановление: vault operator raft snapshot restore -force <file> (RUNBOOK «Vault»).
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: vault-raft-snapshot
+  namespace: observability
+spec:
+  schedule: "30 2 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      template:
+        spec:
+          restartPolicy: Never
+          securityContext: {runAsNonRoot: true, runAsUser: 100, seccompProfile: {type: RuntimeDefault}}
+          containers:
+            - name: snapshot
+              image: hashicorp/vault:1.20
+              command: ["/bin/sh", "-c"]
+              args:
+                - |
+                  set -e
+                  export VAULT_TOKEN=$(vault write -field=token auth/kubernetes/login role=vault-backup jwt="$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)")
+                  vault operator raft snapshot save /tmp/vault-$(date +%F).snap
+                  mc alias set minio https://minio.infra.parking.uz:9000 "$MINIO_ACCESS_KEY" "$MINIO_SECRET_KEY"
+                  mc cp /tmp/vault-$(date +%F).snap minio/vault-snapshots/
+                  echo "vault_snapshot_timestamp $(date +%s)" | curl -s --data-binary @- http://pushgateway.observability.svc:9091/metrics/job/vault-backup
+              env:
+                - {name: VAULT_ADDR, value: https://vault.infra.parking.uz:8200}
+              envFrom:
+                - secretRef: {name: vault-backup-minio}      # ExternalSecret
+              securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
+              resources: {requests: {cpu: 50m, memory: 64Mi}, limits: {cpu: 500m, memory: 256Mi}}
+              volumeMounts: [{name: tmp, mountPath: /tmp}]
+          volumes: [{name: tmp, emptyDir: {sizeLimit: 1Gi}}]

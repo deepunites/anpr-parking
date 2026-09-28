@@ -1,0 +1,45 @@
+# Promtail → Loki: дисциплина лейблов (фаза 7 §1).
+# Лейблы Loki — только низкокардинальные: app, env, component, level, pod. tenant_id, lot_id, camera_id, session_id,
+# correlation_id, trace_id — поля JSON внутри строки: ищутся `| json | correlation_id="…"`, не индексируются как лейблы
+# (иначе десятки тысяч стримов). Retention: 30 дней (compactor), audit-события — только в PostgreSQL.
+server:
+  http_listen_port: 9080
+positions:
+  filename: /run/promtail/positions.yaml
+clients:
+  - url: http://loki:3100/loki/api/v1/push
+    tenant_id: parking
+scrape_configs:
+  - job_name: kubernetes-pods
+    kubernetes_sd_configs:
+      - role: pod
+    relabel_configs:
+      - source_labels: [__meta_kubernetes_pod_label_app_kubernetes_io_part_of]
+        regex: parking
+        action: keep
+      - source_labels: [__meta_kubernetes_namespace]
+        target_label: namespace
+      - source_labels: [__meta_kubernetes_pod_label_app_kubernetes_io_component]   # api | consumer | publisher | celery
+        target_label: component
+      - source_labels: [__meta_kubernetes_pod_name]
+        target_label: pod
+      - replacement: parking
+        target_label: app
+    pipeline_stages:
+      - json:
+          expressions:
+            level: level
+            environment: environment
+      - labels:
+          level:
+          environment:
+      - labeldrop:                     # на случай, если кто-то добавит их как лейблы выше
+          - tenant_id
+          - lot_id
+          - camera_id
+          - session_id
+          - correlation_id
+          - trace_id
+      - timestamp:
+          source: timestamp
+          format: RFC3339Nano

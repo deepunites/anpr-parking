@@ -1,0 +1,129 @@
+# Patroni {{ patroni_version | default("4.0") }} — production-шаблон (Ansible role patroni). Топология CORE §4: primary + sync standby
+# (RPO = 0 для критичных транзакций) + async standby (отчёты, PITR). DCS — etcd v3 (3 узла, те же ВМ).
+# Обоснования параметров PostgreSQL — docs/INFRA.md §3; лаборатория с теми же ключами — deploy/postgres/lab/pgha_lab.py.
+scope: parking-{{ env }}
+namespace: /parking/
+name: {{ inventory_hostname }}
+
+restapi:
+  listen: 0.0.0.0:8008
+  connect_address: {{ ansible_host }}:8008
+  authentication:
+    username: patroni
+    password: "{{ patroni_rest_password }}"
+  cafile: /etc/patroni/ca.crt
+  certfile: /etc/patroni/patroni.crt
+  keyfile: /etc/patroni/patroni.key
+
+etcd3:
+  hosts: {{ etcd_hosts | to_json }}       # ["10.10.20.11:2379", "10.10.20.12:2379", "10.10.20.13:2379"]
+  protocol: https
+  cacert: /etc/patroni/ca.crt
+  cert: /etc/patroni/patroni.crt
+  key: /etc/patroni/patroni.key
+
+bootstrap:
+  dcs:
+    ttl: 30                      # лидер теряет лидерство через 30 с без обновления ключа
+    loop_wait: 10                # цикл HA
+    retry_timeout: 10
+    maximum_lag_on_failover: 1048576     # 1 МБ: реплика с большим отставанием не становится лидером
+    failsafe_mode: true          # etcd недоступен, но узлы видят друг друга → primary не деградирует в read-only
+    synchronous_mode: true       # ровно один sync standby; app_critical пишет с synchronous_commit=remote_apply
+    synchronous_mode_strict: false        # при потере sync standby primary продолжает писать (доступность приёма камер)
+    synchronous_node_count: 1
+    postgresql:
+      use_pg_rewind: true
+      use_slots: true
+      parameters:
+        # --- репликация / WAL ---
+        wal_level: replica
+        hot_standby: "on"
+        max_wal_senders: 10
+        max_replication_slots: 10
+        wal_log_hints: "on"                  # pg_rewind старого primary
+        wal_keep_size: 2GB
+        archive_mode: "on"
+        archive_timeout: 60s                 # RPO архива ≤ 60 с даже при малом трафике
+        archive_command: "pgbackrest --stanza={{ pgbackrest_stanza }} archive-push %p"
+        # --- диагностика (§3) ---
+        shared_preload_libraries: pg_stat_statements,auto_explain
+        pg_stat_statements.track: all
+        pg_stat_statements.max: 5000
+        auto_explain.log_min_duration: 500ms
+        auto_explain.log_analyze: "on"
+        auto_explain.log_buffers: "on"
+        auto_explain.log_timing: "off"       # log_analyze без timing: дешевле на горячих путях
+        auto_explain.log_format: json
+        auto_explain.sample_rate: 1.0
+        log_min_duration_statement: 500ms
+        log_lock_waits: "on"
+        log_checkpoints: "on"
+        log_autovacuum_min_duration: 1s
+        log_line_prefix: "%m [%p] %q%u@%d app=%a "
+        # --- память/соединения (ВМ 8 vCPU / 32 ГБ, docs/INFRA.md §3) ---
+        max_connections: 300                 # PgBouncer держит ≤ 200 серверных соединений; запас — реплики, обслуживание
+        shared_buffers: 8GB                  # 25 % RAM
+        effective_cache_size: 24GB           # 75 % RAM (страничный кеш ОС)
+        work_mem: 32MB                       # отчёты/сверка сортируют десятки тысяч строк; ×параллельность ≤ 200 соединений ≪ RAM
+        maintenance_work_mem: 1GB            # VACUUM/CREATE INDEX на партициях
+        huge_pages: try
+        # --- контрольные точки / WAL под 30–400 событий/с (фаза 8: ≈ 3 МБ WAL/мин на 6 соб./с) ---
+        checkpoint_timeout: 15min
+        checkpoint_completion_target: 0.9
+        max_wal_size: 8GB
+        min_wal_size: 2GB
+        wal_compression: zstd
+        # --- autovacuum: горячие таблицы раздуваются быстрее всего (§3, отдельный профиль в миграции 0013) ---
+        autovacuum_max_workers: 5
+        autovacuum_naptime: 15s
+        autovacuum_vacuum_cost_limit: 2000
+        autovacuum_vacuum_cost_delay: 2ms
+        # --- безопасность/таймауты ---
+        idle_in_transaction_session_timeout: 60s
+        statement_timeout: 0                 # per-role: app_critical 5s, app_bulk 90s (миграция 0001)
+        password_encryption: scram-sha-256
+        ssl: "on"
+        ssl_cert_file: /etc/patroni/server.crt
+        ssl_key_file: /etc/patroni/server.key
+        ssl_ca_file: /etc/patroni/ca.crt
+  initdb:
+    - encoding: UTF8
+    - locale: C.UTF-8
+    - data-checksums
+  pg_hba:
+    - local all all peer
+    - hostssl all all 10.10.20.0/24 scram-sha-256          # PgBouncer/HAProxy ВМ
+    - hostssl all all 10.10.0.0/16 scram-sha-256           # узлы Kubernetes (publisher maintenance DSN напрямую)
+    - hostssl replication replicator 10.10.20.0/24 scram-sha-256
+  post_bootstrap: /etc/patroni/post_bootstrap.sh          # CREATE EXTENSION pg_stat_statements, amcheck; роли приложения ставит alembic 0001
+
+postgresql:
+  listen: 0.0.0.0:5432
+  connect_address: {{ ansible_host }}:5432
+  data_dir: /var/lib/postgresql/16/main
+  bin_dir: /usr/lib/postgresql/16/bin
+  config_dir: /etc/postgresql/16/main
+  authentication:
+    replication: {username: replicator, password: "{{ pg_replicator_password }}"}
+    superuser: {username: postgres, password: "{{ pg_superuser_password }}"}
+    rewind: {username: rewind_user, password: "{{ pg_rewind_password }}"}
+  parameters:
+    unix_socket_directories: /var/run/postgresql
+  create_replica_methods:
+    - pgbackrest                          # реплика из репозитория бэкапов (не нагружает primary), fallback — basebackup
+    - basebackup
+  pgbackrest:
+    command: pgbackrest --stanza={{ pgbackrest_stanza }} --delta restore
+    keep_data: true
+    no_params: true
+  basebackup:
+    checkpoint: fast
+  callbacks:
+    on_role_change: /etc/patroni/on_role_change.sh        # обновляет метку в мониторинге; HAProxy сам опрашивает /primary
+
+tags:
+  nofailover: false
+  noloadbalance: false
+  clonefrom: {{ (patroni_role == "async") | lower }}      # реплики клонируются с async standby
+  nosync: {{ (patroni_role == "async") | lower }}         # async standby никогда не становится sync

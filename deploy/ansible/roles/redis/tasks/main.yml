@@ -1,0 +1,36 @@
+# Redis 7 + Sentinel на каждой из трёх ВМ (кворум 2/3). Первая ВМ инвентаря — начальный master, остальные — replicaof;
+# после первого failover истина — у Sentinel (клиенты ходят по redis+sentinel://, INFRA §2 / фаза 10).
+- name: Redis 7 (Ubuntu 24.04 apt)
+  ansible.builtin.apt: {name: [redis-server, redis-sentinel], state: present}
+- name: redis.conf (bind на адрес ВМ, requirepass/masterauth, AOF everysec, maxmemory с вытеснением только кешей — volatile-lru)
+  ansible.builtin.template: {src: redis.conf.j2, dest: /etc/redis/redis.conf, owner: redis, group: redis, mode: "0640"}
+  notify: restart redis
+- name: sentinel.conf (Sentinel дописывает своё состояние в файл — шаблон применяется только при создании)
+  ansible.builtin.template: {src: sentinel.conf.j2, dest: /etc/redis/sentinel.conf, owner: redis, group: redis, mode: "0640", force: false}
+  notify: restart sentinel
+- name: Сервисы
+  ansible.builtin.systemd: {name: "{{ item }}", enabled: true, state: started}
+  loop: [redis-server, redis-sentinel]
+- name: redis_exporter (метрики redis_stream_lag считает приложение; здесь — память, клиенты, роль)
+  ansible.builtin.get_url:
+    url: "https://github.com/oliver006/redis_exporter/releases/download/v{{ redis_exporter_version }}/redis_exporter-v{{ redis_exporter_version }}.linux-amd64.tar.gz"
+    dest: /tmp/redis_exporter.tgz
+    checksum: "sha256:{{ redis_exporter_sha256 }}"
+- name: redis_exporter установка
+  ansible.builtin.unarchive: {src: /tmp/redis_exporter.tgz, dest: /usr/local/bin, remote_src: true, extra_opts: [--strip-components=1, --wildcards, "*/redis_exporter"]}
+- name: redis_exporter systemd
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/redis_exporter.service
+    content: |
+      [Unit]
+      Description=redis_exporter
+      [Service]
+      User=redis
+      Environment=REDIS_ADDR=redis://127.0.0.1:6379 REDIS_PASSWORD={{ redis_password }}
+      ExecStart=/usr/local/bin/redis_exporter --web.listen-address=:9121
+      Restart=always
+      [Install]
+      WantedBy=multi-user.target
+  notify: restart redis_exporter
+- name: redis_exporter запуск
+  ansible.builtin.systemd: {name: redis_exporter, enabled: true, state: started, daemon_reload: true}

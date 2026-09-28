@@ -1,0 +1,7 @@
+t=2 m=19MiB p=1: median 61 ms, max 75 ms
+t=2 m=32MiB p=1: median 123 ms, max 134 ms
+t=3 m=24MiB p=1: median 107 ms, max 129 ms
+t=1 m=64MiB p=1: median 159 ms, max 162 ms
+t=2 m=64MiB p=1: median 249 ms, max 296 ms
+t=3 m=64MiB p=1: median 365 ms, max 376 ms
+t=2 m=128MiB p=1: median 513 ms, max 515 ms

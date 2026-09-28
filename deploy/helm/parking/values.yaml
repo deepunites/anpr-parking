@@ -1,0 +1,229 @@
+# Значения по умолчанию = production-профиль. Окружения переопределяют values-<env>.yaml (staging, sandbox).
+# Ресурсы — из замеров фазы 8 (docs/backend/load/*.json, docs/INFRA.md §2): RSS API 340 МБ под нагрузкой,
+# consumer 135 МБ, publisher 131 МБ, replayer 128 МБ; CPU API ≈ 40–60 мс на событие камеры.
+
+image:
+  registry: harbor.parking.uz/parking
+  backend: parking-backend
+  frontend: parking-frontend
+  # неизменяемый тег {semver}-{git-sha}; latest в production запрещён (тест values: helm lint + CI)
+  tag: ""
+  pullPolicy: IfNotPresent
+  pullSecrets: []
+
+env: production            # production | staging | sandbox — попадает в PARKING_ENV и лейблы
+domain: parking.example.uz
+
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-dns
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"     # WebSocket
+    nginx.ingress.kubernetes.io/proxy-body-size: "2m"
+    nginx.ingress.kubernetes.io/limit-rps: "100"            # на IP клиента (THREAT_MODEL T-24); площадка за NAT — ≤ 100 событий/с
+    nginx.ingress.kubernetes.io/limit-connections: "200"
+  tls: true
+
+secrets:
+  # production/staging: ExternalSecret → Vault (External Secrets Operator, ClusterSecretStore vault)
+  external:
+    enabled: true
+    storeRef:
+      name: vault
+      kind: ClusterSecretStore
+    refreshInterval: 1h
+    # путь в Vault KV v2: kv/parking/<env>/app → ключи = переменные окружения
+    path: kv/parking/production/app
+  # только sandbox/dev: kind: Secret из values (в git не хранится, передаётся --set-file/--set)
+  inline:
+    enabled: false
+    data: {}
+
+config:
+  logLevel: INFO
+  # ключи шифрования номеров: production/staging — из Vault (AppRole; role_id/secret_id приходят через ExternalSecret),
+  # sandbox — из PARKING_TENANT_KEYS_JSON (env)
+  keysSource: vault
+  vault:
+    addr: https://vault.infra.parking.uz:8200
+    kvMount: kv
+    keysPath: parking/production/tenant-keys
+    caFile: /etc/parking/ca/ca.crt
+  # ConfigMap с CA внутреннего PKI (Vault/PgBouncer TLS), монтируется в /etc/parking/ca; sandbox — отключено
+  caConfigMap: parking-ca
+  corsOrigins: "[]"
+  otlpEndpoint: http://otel-collector.observability.svc:4318
+  otelEntrySampleRatio: "0.02"
+  otelApiSampleRatio: "0.1"
+  redisSocketTimeoutSeconds: "0.2"
+  barrierDispatch: celery        # consumer ставит команды шлагбаума в очередь Celery barrier (изоляция HTTP к контроллерам)
+  dbPoolSize: "10"
+  referenceCacheTtlSeconds: "10"  # кеш процесса площадки/шлагбаума/тарифа: правка справочника видна всем подам ≤ TTL
+  metricsPort: 9464
+  # v2 этап 7: блок «здоровье» дашборда владельца платформы (PromQL из API); пусто — локальные признаки
+  prometheusUrl: http://prometheus-operated.observability.svc:9090
+
+# --- процессы ---------------------------------------------------------------
+api:
+  replicas: 3
+  # uvicorn: 1 воркер на под (реестр Prometheus на процесс, A-54); масштабирование — репликами/HPA
+  workers: 1
+  keepAliveSeconds: 75
+  terminationGracePeriodSeconds: 30     # uvicorn дорабатывает открытые запросы, WS закрываются с кодом 1001
+  resources:
+    requests: {cpu: 500m, memory: 384Mi}   # RSS 337 МБ под нагрузкой (baseline) + запас; 500m ≈ 10 соб./с на под при 40–60 мс CPU/событие
+    limits: {cpu: "1", memory: 768Mi}
+  hpa:
+    enabled: true
+    minReplicas: 3
+    maxReplicas: 24                      # 200 соб./с пика ÷ ≈10 соб./с на под при 60 % CPU (INFRA §2); 400 соб./с — A-63
+    cpuUtilization: 60
+    # запросов/с на под (prometheus-adapter: rate(http_requests_total[2m]) → parking_http_requests_per_second)
+    requestsPerSecondPerPod: "20"
+  pdb:
+    minAvailable: 2
+  service:
+    port: 8000
+
+publisher:
+  replicas: 2                            # 1 активная (advisory lock в PostgreSQL, порядок событий) + горячий резерв
+  terminationGracePeriodSeconds: 30
+  resources:
+    requests: {cpu: 100m, memory: 192Mi}  # RSS 131 МБ
+    limits: {cpu: 500m, memory: 384Mi}
+  pdb: {minAvailable: 1}
+
+consumer:
+  replicas: 2                            # consumer group + аренда шардов: ≤ 8 активных (по числу шардов)
+  terminationGracePeriodSeconds: 60      # доработать текущую запись + XACK; иначе XAUTOCLAIM через 30 с
+  resources:
+    requests: {cpu: 250m, memory: 192Mi}  # RSS 135 МБ
+    limits: {cpu: "1", memory: 512Mi}
+  pdb: {minAvailable: 1}
+
+replayer:
+  replicas: 1                            # группа offline на anpr:offline; воспроизведение идёт батчами, дубли отсекает идемпотентность
+  terminationGracePeriodSeconds: 60
+  resources:
+    requests: {cpu: 100m, memory: 192Mi}  # RSS 128 МБ
+    limits: {cpu: 500m, memory: 384Mi}
+  pdb: {maxUnavailable: 1}
+
+cameraHealth:
+  replicas: 1                            # singleton (A-43): статусы камер по площадкам
+  terminationGracePeriodSeconds: 30
+  resources:
+    requests: {cpu: 50m, memory: 160Mi}
+    limits: {cpu: 250m, memory: 320Mi}
+  pdb: {maxUnavailable: 1}
+
+webhooks:
+  replicas: 1                            # диспетчер исходящих вебхуков (этап 6 v2): SKIP LOCKED — можно и 2
+  terminationGracePeriodSeconds: 30
+  resources:
+    requests: {cpu: 50m, memory: 128Mi}
+    limits: {cpu: 250m, memory: 256Mi}
+  pdb: {maxUnavailable: 1}
+
+celery:
+  # очереди разделены по критичности: saga+barrier (выезд), payments (провайдеры), maintenance (retention, media, sweep)
+  pools:
+    exit:
+      queues: "saga,barrier"
+      replicas: 2
+      concurrency: 1                     # --pool=solo: один процесс на под (метрики без multiprocess-режима)
+      terminationGracePeriodSeconds: 60  # команда шлагбаума ≤ 3×3 с + backoff ≈ 15 с
+      resources:
+        requests: {cpu: 100m, memory: 192Mi}
+        limits: {cpu: 500m, memory: 384Mi}
+    payments:
+      queues: "payments"
+      replicas: 2
+      concurrency: 1
+      terminationGracePeriodSeconds: 120 # запрос статуса у провайдера с таймаутом 10 с × ретраи
+      resources:
+        requests: {cpu: 100m, memory: 192Mi}
+        limits: {cpu: 500m, memory: 384Mi}
+    maintenance:
+      queues: "maintenance"
+      replicas: 2
+      concurrency: 1
+      terminationGracePeriodSeconds: 300 # retention/sweep батчами; задача идемпотентна, недоделанное подхватит следующая
+      resources:
+        requests: {cpu: 100m, memory: 192Mi}
+        limits: {cpu: "1", memory: 512Mi}
+  beat:
+    replicas: 1                          # планировщик — singleton
+    terminationGracePeriodSeconds: 30
+    resources:
+      requests: {cpu: 50m, memory: 128Mi}
+      limits: {cpu: 250m, memory: 256Mi}
+
+frontend:
+  replicas: 2
+  terminationGracePeriodSeconds: 15
+  resources:
+    requests: {cpu: 50m, memory: 32Mi}
+    limits: {cpu: 250m, memory: 128Mi}
+  pdb: {minAvailable: 1}
+  service:
+    port: 8080
+
+migrations:
+  enabled: true                          # Job pre-install/pre-upgrade: alembic upgrade head от роли app_maintenance
+  backoffLimit: 0
+  activeDeadlineSeconds: 900
+  resources:
+    requests: {cpu: 100m, memory: 192Mi}
+    limits: {cpu: 500m, memory: 384Mi}
+
+# --- сеть ---------------------------------------------------------------------
+networkPolicy:
+  enabled: true
+  ingressNamespace: ingress-nginx        # namespace ingress-контроллера (лейбл kubernetes.io/metadata.name)
+  monitoringNamespace: observability     # Prometheus/Loki/OTel collector
+  postgres:                              # Patroni/PgBouncer вне кластера (VM, CORE Q5) — egress по CIDR
+    cidrs: ["10.10.20.0/24"]
+    ports: [6432, 5000]                  # 6432 — PgBouncer (critical/bulk), 5000 — HAProxy→primary напрямую (maintenance DSN: LISTEN/advisory lock publisher'а)
+  redis:
+    cidrs: ["10.10.21.0/24"]
+    ports: [6379, 26379]                 # 26379 — Sentinel: клиент спрашивает адрес master (redis+sentinel://)
+  minio:
+    cidrs: ["10.10.22.0/24"]
+    port: 9000
+  barriers:                              # контроллеры шлагбаумов на площадках (VPN); доступ ещё ограничен barrier_cidr_allowlist площадки
+    cidrs: ["10.100.0.0/16"]
+    ports: [80, 443, 502]
+  providers:                             # Payme/Click — публичный интернет по HTTPS; ПДн не покидают контур (только id платежей)
+    cidrs: ["0.0.0.0/0"]
+    except: ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "169.254.169.254/32"]
+
+# --- прочее -------------------------------------------------------------------
+serviceAccount:
+  automountToken: false
+podSecurity:
+  runAsUser: 10001
+  runAsGroup: 10001
+  fsGroup: 10001
+topology:
+  zoneKey: topology.kubernetes.io/zone   # реплики одного сервиса — на разных узлах и по возможности в разных зонах
+  nodeKey: kubernetes.io/hostname
+priorityClassName: ""
+
+observability:
+  runbookBaseUrl: https://runbook.parking.local
+  prometheusRule:
+    enabled: true
+    labels:
+      release: kube-prometheus-stack
+  grafanaDashboards:
+    enabled: true
+    label: grafana_dashboard
+    folderAnnotation: parking
+  serviceMonitor:
+    enabled: true
+    labels:
+      release: kube-prometheus-stack
+  promtail:
+    enabled: true

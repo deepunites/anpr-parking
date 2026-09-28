@@ -1,0 +1,39 @@
+$ uv run alembic downgrade base
+INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+INFO  [alembic.runtime.migration] Running downgrade 0008 -> 0007, RLS-политики на все tenant-owned таблицы и права ролей app_critical / app_bulk / app_maintenance
+INFO  [alembic.runtime.migration] Running downgrade 0007 -> 0006, Audit, event_log, outbox (по дням, NOTIFY), consumer_inbox, media_object, deletion_request
+INFO  [alembic.runtime.migration] Running downgrade 0006 -> 0005, Billing: provider_account, cashier_shift, payment (триггер I-6), payment_attempt, refund (контроль суммы), сверка, webhook_inbox
+INFO  [alembic.runtime.migration] Running downgrade 0005 -> 0004, Parking и ANPR: vehicle, parking_session (HASH 32), anpr_event, anpr_idempotency, exit_saga, manual_correction
+INFO  [alembic.runtime.migration] Running downgrade 0004 -> 0003, Tariff и Access Control: tariff_plan, tariff_plan_version (EXCLUDE), holiday_calendar, holiday, access_rule, subscription
+INFO  [alembic.runtime.migration] Running downgrade 0003 -> 0002, Devices: camera, camera_api_key, barrier, barrier_command (партиции по месяцам)
+INFO  [alembic.runtime.migration] Running downgrade 0002 -> 0001, Tenancy и Identity: tenant, parking_lot, parking_spot, app_user, user_lot, refresh_token, login_attempt
+INFO  [alembic.runtime.migration] Running downgrade 0001 -> , Фундамент: btree_gist, схема app, роли, enum-типы, служебные функции
+$ psql -c "\dt" | wc -l  (таблиц после downgrade base, включая alembic_version)
+1
+$ uv run alembic upgrade head
+INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+INFO  [alembic.runtime.migration] Running upgrade  -> 0001, Фундамент: btree_gist, схема app, роли, enum-типы, служебные функции
+INFO  [alembic.runtime.migration] Running upgrade 0001 -> 0002, Tenancy и Identity: tenant, parking_lot, parking_spot, app_user, user_lot, refresh_token, login_attempt
+INFO  [alembic.runtime.migration] Running upgrade 0002 -> 0003, Devices: camera, camera_api_key, barrier, barrier_command (партиции по месяцам)
+INFO  [alembic.runtime.migration] Running upgrade 0003 -> 0004, Tariff и Access Control: tariff_plan, tariff_plan_version (EXCLUDE), holiday_calendar, holiday, access_rule, subscription
+INFO  [alembic.runtime.migration] Running upgrade 0004 -> 0005, Parking и ANPR: vehicle, parking_session (HASH 32), anpr_event, anpr_idempotency, exit_saga, manual_correction
+INFO  [alembic.runtime.migration] Running upgrade 0005 -> 0006, Billing: provider_account, cashier_shift, payment (триггер I-6), payment_attempt, refund (контроль суммы), сверка, webhook_inbox
+INFO  [alembic.runtime.migration] Running upgrade 0006 -> 0007, Audit, event_log, outbox (по дням, NOTIFY), consumer_inbox, media_object, deletion_request
+INFO  [alembic.runtime.migration] Running upgrade 0007 -> 0008, RLS-политики на все tenant-owned таблицы и права ролей app_critical / app_bulk / app_maintenance
+$ uv run alembic downgrade -1 && uv run alembic upgrade head
+INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+INFO  [alembic.runtime.migration] Running downgrade 0008 -> 0007, RLS-политики на все tenant-owned таблицы и права ролей app_critical / app_bulk / app_maintenance
+INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+INFO  [alembic.runtime.migration] Running upgrade 0007 -> 0008, RLS-политики на все tenant-owned таблицы и права ролей app_critical / app_bulk / app_maintenance
+$ uv run alembic current
+INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+0008 (head)
+$ psql: таблицы/партиции/политики
+tables: 38, partitions: 68
+rls policies: 70
+tables with RLS: 35

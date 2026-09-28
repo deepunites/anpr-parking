@@ -1,0 +1,43 @@
+# Ночные проверки: mutation testing, failure-лаборатория, k6 на staging (полные сценарии §6 фазы 8, A-49), схема staging для migration-check.
+name: nightly
+on:
+  schedule: [{cron: "0 1 * * *"}]
+  workflow_dispatch:
+permissions: {contents: read, actions: write}
+jobs:
+  mutation:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: uv sync --frozen && uv run mutmut run && uv run mutmut results
+        working-directory: backend
+  failure-lab:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: |
+          mkdir -p ~/.local/tools && cd ~/.local/tools
+          curl -sSL https://github.com/Shopify/toxiproxy/releases/download/v2.12.0/toxiproxy-server-linux-amd64 -o toxiproxy-server && chmod +x toxiproxy-server
+      - run: uv sync --frozen && uv run pytest tests/failure -m failure -q
+        working-directory: backend
+  load-staging:
+    runs-on: [self-hosted, staging]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: grafana/setup-k6-action@v1
+      - name: Полные сценарии §6 (SCALE=1 RATE_SCALE=1) против staging; критерии p95/p99/EXIT e2e не ослаблены
+        run: |
+          for s in baseline peak absolute operators; do
+            K6_SCENARIO=$s API=https://staging.parking.example.uz k6 run --summary-export load/results/$s.json load/k6/parking.js
+          done
+      - uses: actions/upload-artifact@v4
+        with: {name: k6-results, path: load/results/*.json}
+  staging-schema:
+    runs-on: [self-hosted, staging]
+    steps:
+      - run: pg_dump --schema-only "$STAGING_RO_DSN" > schema.sql
+        env: {STAGING_RO_DSN: "${{ secrets.STAGING_RO_DSN }}"}
+      - uses: actions/upload-artifact@v4
+        with: {name: staging-schema, path: schema.sql, retention-days: 2}

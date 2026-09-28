@@ -1,0 +1,234 @@
+# promtool test rules deploy/prometheus/alerts_test.yaml — проверка порогов и защиты от шума на синтетических рядах
+# (нет трафика → нет алерта; 99.5 % успеха → нет алерта; 90 % → алерт). Прогон на данных нагрузочного теста — фаза 8.
+rule_files:
+  - alerts.yaml
+evaluation_interval: 15s
+tests:
+  # --- OutboxLag: порог 30 с, for 2m; 20 с — не шумит
+  - interval: 15s
+    input_series:
+      - series: 'outbox_oldest_pending_age_seconds{job="parking-api",instance="api-1"}'
+        values: '0 0 0 0 20 20 20 20 40 55 70 85 100 115 130 145 160 175 190 205'
+    alert_rule_test:
+      - eval_time: 1m45s   # 20 с — ниже порога
+        alertname: OutboxLag
+        exp_alerts: []
+      - eval_time: 2m30s   # выше порога, но for 2m не истёк
+        alertname: OutboxLag
+        exp_alerts: []
+      - eval_time: 4m15s   # 2m15s выше порога
+        alertname: OutboxLag
+        exp_alerts:
+          - exp_labels: {severity: warning}
+            exp_annotations:
+              summary: "Лаг outbox: самое старое неопубликованное событие старше 30 с"
+              description: "Publisher не публикует события в Redis Streams (упал, потерял лидерство или Redis недоступен)."
+              impact: "Саги выезда и уведомления задерживаются на величину лага; live-панель отстаёт."
+              runbook_url: "https://runbook.parking.local/RUNBOOK.md#outbox-lag"
+
+  # --- PostgresPrimaryDown: dependency_up=0 1 мин
+  - interval: 15s
+    input_series:
+      - series: 'dependency_up{dependency="postgres",job="parking-api",instance="api-1"}'
+        values: '1 1 1 1 0 0 0 0 0 0 0 0'
+      - series: 'dependency_up{dependency="postgres",job="parking-api",instance="api-2"}'
+        values: '1 1 1 1 0 0 0 0 0 0 0 0'
+      - series: 'offline_mode_active{job="parking-api",instance="api-1"}'
+        values: '0 0 0 0 0 0 0 0 0 0 0 0'
+    alert_rule_test:
+      - eval_time: 1m15s
+        alertname: PostgresPrimaryDown
+        exp_alerts: []
+      - eval_time: 2m15s
+        alertname: PostgresPrimaryDown
+        exp_alerts:
+          - exp_labels: {severity: critical}
+            exp_annotations:
+              summary: "PostgreSQL primary недоступен (API в оффлайн-режиме)"
+              description: "API не может выполнить SELECT 1 к primary (dependency_up{postgres}=0) либо DB-breaker открыт (offline_mode_active=1)."
+              impact: "Въезд работает по оффлайн-политике (буфер anpr:offline), выезд с оплатой и кассы не работают, история не пишется."
+              runbook_url: "https://runbook.parking.local/RUNBOOK.md#postgres-primary-down"
+
+  # --- ExitSuccessRatioLow: 99.5 % OK — тишина; нет трафика — тишина; 90 % — алерт
+  - interval: 15s
+    input_series:
+      - series: 'barrier_command_total{lot="a",command="OPEN",result="OK",job="parking-worker",instance="w-1"}'
+        values: '0+199x80'       # 199 OK за 15 с
+      - series: 'barrier_command_total{lot="a",command="OPEN",result="FAILED",job="parking-worker",instance="w-1"}'
+        values: '0+1x80'         # 1 FAILED за 15 с → 99.5 %
+    alert_rule_test:
+      - eval_time: 15m
+        alertname: ExitSuccessRatioLow
+        exp_alerts: []
+  - interval: 15s
+    input_series:
+      - series: 'barrier_command_total{lot="a",command="OPEN",result="OK",job="parking-worker",instance="w-1"}'
+        values: '5 5 5 5 5 5 5 5 5 5 5 5 5 5 5 5 5 5 5 5 5 5 5 5 5 5 5 5 5 5 5 5 5 5 5 5 5 5 5 5 5 5 5 5 5 5 5 5 5 5 5 5 5 5 5 5 5 5 5 5 5'
+    alert_rule_test:
+      - eval_time: 15m        # ночь: команд нет → 0/0, алерт молчит
+        alertname: ExitSuccessRatioLow
+        exp_alerts: []
+  - interval: 15s
+    input_series:
+      - series: 'barrier_command_total{lot="a",command="OPEN",result="OK",job="parking-worker",instance="w-1"}'
+        values: '0+9x80'
+      - series: 'barrier_command_total{lot="a",command="OPEN",result="FAILED",job="parking-worker",instance="w-1"}'
+        values: '0+1x80'         # 90 %
+    alert_rule_test:
+      - eval_time: 15m
+        alertname: ExitSuccessRatioLow
+        exp_alerts:
+          - exp_labels: {severity: critical}
+            exp_annotations:
+              summary: "Доля успешных открытий шлагбаума ниже 98 % (SLO 99.5 %)"
+              description: "Симптомный алерт: за 10 минут менее 98 % команд OPEN завершились OK (90%)."
+              impact: "Водители стоят перед закрытым шлагбаумом; операторы открывают вручную, растёт очередь."
+              runbook_url: "https://runbook.parking.local/RUNBOOK.md#exit-success-low"
+
+  # --- CameraEvents5xxHigh: 0.2 % — тишина (SLO 0.1 %, алерт 0.5 %); 1 % — алерт
+  - interval: 15s
+    input_series:
+      - series: 'http_request_duration_seconds_count{route="/api/v1/camera/events",status_class="2xx",job="parking-api",instance="api-1"}'
+        values: '0+998x60'
+      - series: 'http_request_duration_seconds_count{route="/api/v1/camera/events",status_class="5xx",job="parking-api",instance="api-1"}'
+        values: '0+2x60'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: CameraEvents5xxHigh
+        exp_alerts: []
+  - interval: 15s
+    input_series:
+      - series: 'http_request_duration_seconds_count{route="/api/v1/camera/events",status_class="2xx",job="parking-api",instance="api-1"}'
+        values: '0+990x60'
+      - series: 'http_request_duration_seconds_count{route="/api/v1/camera/events",status_class="5xx",job="parking-api",instance="api-1"}'
+        values: '0+10x60'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: CameraEvents5xxHigh
+        exp_alerts:
+          - exp_labels: {severity: critical}
+            exp_annotations:
+              summary: "POST /camera/events: доля 5xx выше 0.5 % (SLO 0.1 %)"
+              description: "Ошибки сервера на приёме событий камер: 1% за 5 минут."
+              impact: "Камеры уходят в ретраи и локальный буфер; часть въездов/выездов обрабатывается с задержкой."
+              runbook_url: "https://runbook.parking.local/RUNBOOK.md#camera-events-errors"
+
+  # --- PaymentsFailing: без трафика молчит; DlqGrowing: старый непустой DLQ без притока молчит
+  - interval: 15s
+    input_series:
+      - series: 'payment_total{method="ONLINE",status="FAILED",job="parking-api",instance="api-1"}'
+        values: '3 3 3 3 3 3 3 3 3 3 3 3 3 3 3 3 3 3 3 3 3 3 3 3 3 3 3 3 3 3 3 3 3 3 3 3 3 3 3 3 3 3 3 3 3 3 3 3 3 3 3 3 3 3 3 3 3 3 3 3 3'
+      - series: 'dlq_length{stream="events:dlq",job="parking-api",instance="api-1"}'
+        values: '2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2'
+      - series: 'dlq_messages_total{stream="events:dlq",job="parking-worker",instance="w-1"}'
+        values: '2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2'
+    alert_rule_test:
+      - eval_time: 15m
+        alertname: PaymentsFailing
+        exp_alerts: []
+      - eval_time: 15m
+        alertname: DlqGrowing
+        exp_alerts: []
+
+  # --- диск PostgreSQL: 90 % — только DiskUsageHigh (80 %), 96 % — критический PostgresDiskAlmostFull
+  - interval: 15s
+    input_series:
+      - series: 'node_filesystem_size_bytes{instance="db-1",mountpoint="/var/lib/postgresql",fstype="ext4"}'
+        values: '1000x40'
+      - series: 'node_filesystem_avail_bytes{instance="db-1",mountpoint="/var/lib/postgresql",fstype="ext4"}'
+        values: '100x40'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: PostgresDiskAlmostFull
+        exp_alerts: []
+  - interval: 15s
+    input_series:
+      - series: 'node_filesystem_size_bytes{instance="db-1",mountpoint="/var/lib/postgresql",fstype="ext4"}'
+        values: '1000x40'
+      - series: 'node_filesystem_avail_bytes{instance="db-1",mountpoint="/var/lib/postgresql",fstype="ext4"}'
+        values: '40x40'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: PostgresDiskAlmostFull
+        exp_alerts:
+          - exp_labels: {severity: critical, instance: db-1, mountpoint: /var/lib/postgresql, fstype: ext4}
+            exp_annotations:
+              summary: "Диск PostgreSQL db-1 заполнен более чем на 95 % — отказ записи близко"
+              description: "node_exporter: том данных PostgreSQL заполнен на 96%; при 100 % WAL не пишется (PANIC)."
+              impact: "Через минуты остановятся платежи и сессии; предупреждающий DiskUsageHigh (80 %) уже проигнорирован."
+              runbook_url: "https://runbook.parking.local/RUNBOOK.md#postgres-disk"
+
+  # --- часы камеры: 3 события с |skew| > 60 с за 15 минут → CameraClockSkew; 1 событие — тишина
+  - interval: 15s
+    input_series:
+      - series: 'camera_clock_skew_seconds_count{lot="a",job="parking-api",instance="api-1"}'
+        values: '0+1x100'
+      - series: 'camera_clock_skew_seconds_bucket{lot="a",le="60",job="parking-api",instance="api-1"}'
+        values: '0+1x100'
+    alert_rule_test:
+      - eval_time: 25m
+        alertname: CameraClockSkew
+        exp_alerts: []
+  - interval: 15s
+    input_series:
+      - series: 'camera_clock_skew_seconds_count{lot="a",job="parking-api",instance="api-1"}'
+        values: '0+1x100'
+      - series: 'camera_clock_skew_seconds_bucket{lot="a",le="60",job="parking-api",instance="api-1"}'
+        values: '0x100'
+    alert_rule_test:
+      - eval_time: 25m
+        alertname: CameraClockSkew
+        exp_alerts:
+          - exp_labels: {severity: warning, lot: a}
+            exp_annotations:
+              summary: "Часы камер площадки a сдвинуты более чем на 60 с"
+              description: "За 15 минут 60 событий с |skew| > 60 с (событие принято и помечено, шлагбаум открыт)."
+              impact: "Тариф считается по времени события: сдвиг часов искажает длительность стоянки и спорит с чеками."
+              runbook_url: "https://runbook.parking.local/RUNBOOK.md#camera-clock-skew"
+
+  # --- отказ шлагбаума: одна FAILED-команда за 15 минут — предупреждение сразу (for: 0m)
+  - interval: 15s
+    input_series:
+      - series: 'barrier_command_total{lot="a",command="OPEN",result="FAILED",job="parking-worker",instance="w-1"}'
+        values: '0 0 0 0 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1'
+    alert_rule_test:
+      - eval_time: 45s
+        alertname: BarrierFailure
+        exp_alerts: []
+      - eval_time: 2m
+        alertname: BarrierFailure
+        exp_alerts:
+          - exp_labels: {severity: warning, lot: a}
+            exp_annotations:
+              summary: "Отказ шлагбаума на площадке a"
+              description: "За 15 минут 1 команд завершились FAILED после ретраев (breaker может быть OPEN)."
+              impact: "Конкретная полоса не открывается автоматически; сессии уходят в MANUAL_REVIEW."
+              runbook_url: "https://runbook.parking.local/RUNBOOK.md#barrier-failure"
+
+  # --- BackupRestoreVerifiedStale: свежая метрика → тишина; давняя (или отсутствующая) → алерт после for 1h.
+  # time() в promtool стартует с 0: значение -1e6 = «проверка была 11 дней назад»
+  - interval: 15s
+    input_series:
+      - series: 'backup_restore_verified_timestamp{stanza="parking",job="node-exporter"}'
+        values: '3600+0x600'
+    alert_rule_test:
+      - eval_time: 1h
+        alertname: BackupRestoreVerifiedStale
+        exp_alerts: []
+  - interval: 15s
+    input_series:
+      - series: 'backup_restore_verified_timestamp{stanza="parking",job="node-exporter"}'
+        values: '-1000000+0x600'
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: BackupRestoreVerifiedStale
+        exp_alerts: []          # for 1h ещё не истёк
+      - eval_time: 1h15m
+        alertname: BackupRestoreVerifiedStale
+        exp_alerts:
+          - exp_labels: {severity: critical}
+            exp_annotations:
+              summary: "Проверка восстановления бэкапа не проходила более 8 дней"
+              description: "Еженедельный restore + pg_amcheck + контрольные суммы (backup_verify.sh на verify-ВМ) не завершался успешно: бэкап не считается существующим."
+              impact: "Неизвестно, восстановим ли бэкап; RTO 15 мин не гарантирован."
+              runbook_url: "https://runbook.parking.local/RUNBOOK.md#backup-restore-verify"

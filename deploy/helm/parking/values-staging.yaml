@@ -1,0 +1,30 @@
+# staging: тот же чарт, те же лимиты (нагрузочные прогоны фазы 9 идут здесь, A-49), меньше реплик, свой Vault-путь
+env: staging
+domain: staging.parking.example.uz
+image:
+  registry: harbor.parking.uz/parking
+secrets:
+  external:
+    enabled: true
+    path: kv/parking/staging/app
+config:
+  logLevel: INFO
+  keysSource: vault
+  vault: {addr: https://vault.infra.parking.uz:8200, kvMount: kv, keysPath: parking/staging/tenant-keys, caFile: /etc/parking/ca/ca.crt}
+  otelEntrySampleRatio: "0.1"
+api:
+  replicas: 2
+  hpa: {enabled: true, minReplicas: 2, maxReplicas: 6, cpuUtilization: 60, requestsPerSecondPerPod: "20"}
+  pdb: {minAvailable: 1}
+consumer: {replicas: 2}
+publisher: {replicas: 2}
+celery:
+  pools:
+    exit: {queues: "saga,barrier", replicas: 2, concurrency: 1, terminationGracePeriodSeconds: 60, resources: {requests: {cpu: 100m, memory: 192Mi}, limits: {cpu: 500m, memory: 384Mi}}}
+    payments: {queues: "payments", replicas: 1, concurrency: 1, terminationGracePeriodSeconds: 120, resources: {requests: {cpu: 100m, memory: 192Mi}, limits: {cpu: 500m, memory: 384Mi}}}
+    maintenance: {queues: "maintenance", replicas: 1, concurrency: 1, terminationGracePeriodSeconds: 300, resources: {requests: {cpu: 100m, memory: 192Mi}, limits: {cpu: "1", memory: 512Mi}}}
+networkPolicy:
+  postgres: {cidrs: ["10.20.20.0/24"], ports: [6432, 5000]}
+  redis: {cidrs: ["10.20.21.0/24"], ports: [6379, 26379]}
+  minio: {cidrs: ["10.20.22.0/24"], port: 9000}
+  barriers: {cidrs: ["10.200.0.0/16"], ports: [80, 443, 502]}

@@ -1,0 +1,14 @@
+$ uv run ruff check . && uv run ruff format --check .
+All checks passed!
+131 files already formatted
+$ uv run mypy --strict src/
+Success: no issues found in 83 source files
+$ uv run pytest -q
+131 passed, 1 warning in 55.63s
+$ coverage tariff/domain (порог ≥ 95 %)
+src/parking/modules/tariff/domain/engine.py       141      1    99%
+src/parking/modules/tariff/domain/rules.py         86      2    98%
+TOTAL                                             230      3    99%
+$ alembic downgrade -1 && upgrade head
+INFO  [alembic.runtime.migration] Running downgrade 0009 -> 0008, Права фазы 3: DELETE user_lot (скоуп), UPDATE (validity) tariff_plan_version (закрытие окна версии)
+INFO  [alembic.runtime.migration] Running upgrade 0008 -> 0009, Права фазы 3: DELETE user_lot (скоуп), UPDATE (validity) tariff_plan_version (закрытие окна версии)

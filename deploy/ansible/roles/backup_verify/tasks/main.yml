@@ -1,0 +1,23 @@
+- name: Скрипт проверки восстановления
+  ansible.builtin.copy: {src: ../../../postgres/backup_verify.sh, dest: /usr/local/bin/backup_verify.sh, mode: "0755"}
+- name: Еженедельный таймер (воскресенье 03:00) + метрика в textfile collector
+  ansible.builtin.copy:
+    dest: "/etc/systemd/system/{{ item.name }}"
+    content: "{{ item.content }}"
+  loop:
+    - name: backup-verify.service
+      content: |
+        [Service]
+        Type=oneshot
+        User=postgres
+        Environment=STANZA={{ pgbackrest_stanza }} PRIMARY_DSN={{ verify_primary_dsn }} TEXTFILE=/var/lib/node_exporter/textfile_collector/backup_restore_verified.prom
+        ExecStart=/usr/local/bin/backup_verify.sh
+    - name: backup-verify.timer
+      content: |
+        [Timer]
+        OnCalendar=Sun *-*-* 03:00:00
+        Persistent=true
+        [Install]
+        WantedBy=timers.target
+- name: Включить таймер
+  ansible.builtin.systemd: {name: backup-verify.timer, enabled: true, state: started, daemon_reload: true}

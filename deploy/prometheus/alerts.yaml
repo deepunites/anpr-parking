@@ -1,0 +1,338 @@
+# Алерты платформы (фаза 7 §5). Симптомные — будят человека; причинные — warning в рабочее время.
+# Каждый алерт: severity, summary, description, impact, runbook_url (раздел docs/RUNBOOK.md), for.
+# Базовый URL runbook подставляется Helm (values: observability.runbookBaseUrl); тест проверяет якоря разделов.
+groups:
+  - name: parking.critical
+    rules:
+      - alert: ApiDown
+        expr: (count(up{job="parking-api"} == 1) or vector(0)) == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "API недоступен: ни одна реплика parking-api не отвечает на scrape"
+          description: "Prometheus не видит ни одного живого инстанса API {{ $labels.job }} более 1 минуты."
+          impact: "Камеры получают ошибки и уходят в локальный буфер, операторы и кассы не работают, въезд/выезд только вручную."
+          runbook_url: "https://runbook.parking.local/RUNBOOK.md#api-down"
+
+      - alert: PostgresPrimaryDown
+        expr: max(dependency_up{dependency="postgres"}) == 0 or max(offline_mode_active) == 1 or pg_up == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "PostgreSQL primary недоступен (API в оффлайн-режиме)"
+          description: "API не может выполнить SELECT 1 к primary (dependency_up{postgres}=0) либо DB-breaker открыт (offline_mode_active=1)."
+          impact: "Въезд работает по оффлайн-политике (буфер anpr:offline), выезд с оплатой и кассы не работают, история не пишется."
+          runbook_url: "https://runbook.parking.local/RUNBOOK.md#postgres-primary-down"
+
+      - alert: PostgresReplicaLag
+        expr: max(pg_replication_lag_seconds) > 30 or absent(pg_replication_lag_seconds)
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Лаг синхронной реплики PostgreSQL > 30 с или реплика пропала"
+          description: "postgres_exporter сообщает lag {{ $value }} с (или метрика отсутствует — реплика отвалилась)."
+          impact: "Коммиты critical-пула (платежи, саги) блокируются synchronous_commit — выезды с оплатой замедляются до таймаута."
+          runbook_url: "https://runbook.parking.local/RUNBOOK.md#postgres-replica-lag"
+
+      - alert: RedisDown
+        expr: max(dependency_up{dependency="redis"}) == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Redis недоступен из API"
+          description: "PING к Redis не проходит более 1 минуты: стримы событий, кэш ключей камер, WS-fanout и rate-limit не работают."
+          impact: "События не доходят до воркеров (саги стоят), live-панель не обновляется; ingest продолжает работать по кэшу до 24 ч."
+          runbook_url: "https://runbook.parking.local/RUNBOOK.md#redis-down"
+
+      - alert: PaymentsFailing
+        expr: |
+          (
+            sum(rate(payment_total{status="FAILED"}[10m])) / sum(rate(payment_total[10m])) > 0.5
+            and sum(rate(payment_total[10m])) > 0.01
+          )
+          or
+          (
+            sum(rate(gateway_calls_total{result!="ok"}[10m])) / sum(rate(gateway_calls_total[10m])) > 0.5
+            and sum(rate(gateway_calls_total[10m])) > 0.01
+          )
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Платежи не проходят: > 50 % обязательств/вызовов провайдера завершаются ошибкой"
+          description: "Доля FAILED среди payment_total или ошибок/таймаутов gateway_calls_total выше 50 % за 10 минут при наличии трафика."
+          impact: "Водители не могут оплатить выезд онлайн — очередь на выезде, кассиры переходят на наличные."
+          runbook_url: "https://runbook.parking.local/RUNBOOK.md#payments-failing"
+
+      - alert: DlqGrowing
+        expr: sum(dlq_length) > 0 and sum(increase(dlq_messages_total[15m])) > 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "DLQ растёт: события не обрабатываются после 3 попыток"
+          description: "В events:dlq {{ $value }} сообщений и за 15 минут пришли новые. Обработчик падает на конкретном типе событий."
+          impact: "Саги выезда/уведомления по этим событиям остановлены; сессии зависают в EXIT_IN_PROGRESS до ручного replay."
+          runbook_url: "https://runbook.parking.local/RUNBOOK.md#dlq-growing"
+
+      - alert: LotWithoutCameras
+        expr: |
+          (sum by (lot) (camera_status_by_lot{status="ONLINE"}) or sum by (lot) (camera_status_by_lot) * 0) == 0
+          and sum by (lot) (camera_status_by_lot) > 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Площадка {{ $labels.lot }} полностью без камер онлайн"
+          description: "Ни одна камера площадки не в статусе ONLINE 5 минут (все OFFLINE/SILENT/DEGRADED)."
+          impact: "Автоматический въезд/выезд на площадке не работает; шлагбаумы открываются только вручную оператором."
+          runbook_url: "https://runbook.parking.local/RUNBOOK.md#lot-without-cameras"
+
+      - alert: BackupMissing
+        expr: time() - max(parking_backup_last_success_timestamp_seconds) > 26 * 3600 or absent(parking_backup_last_success_timestamp_seconds)
+        for: 30m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Бэкап PostgreSQL не выполнялся более 26 часов"
+          description: "Метрика parking_backup_last_success_timestamp_seconds (pushgateway, job backup) старше 26 ч или отсутствует."
+          impact: "RPO нарушен: при потере primary теряются сутки платежей и сессий."
+          runbook_url: "https://runbook.parking.local/RUNBOOK.md#backup-missing"
+
+      - alert: BackupRestoreVerifiedStale
+        expr: time() - max(backup_restore_verified_timestamp) > 8 * 24 * 3600 or absent(backup_restore_verified_timestamp)
+        for: 1h
+        labels:
+          severity: critical
+        annotations:
+          summary: "Проверка восстановления бэкапа не проходила более 8 дней"
+          description: "Еженедельный restore + pg_amcheck + контрольные суммы (backup_verify.sh на verify-ВМ) не завершался успешно: бэкап не считается существующим."
+          impact: "Неизвестно, восстановим ли бэкап; RTO 15 мин не гарантирован."
+          runbook_url: "https://runbook.parking.local/RUNBOOK.md#backup-restore-verify"
+
+      - alert: CertificateExpiringSoon
+        expr: (probe_ssl_earliest_cert_expiry - time()) < 7 * 24 * 3600
+        for: 1h
+        labels:
+          severity: critical
+        annotations:
+          summary: "TLS-сертификат {{ $labels.instance }} истекает менее чем через 7 дней"
+          description: "blackbox_exporter: срок сертификата истекает через {{ $value | humanizeDuration }}."
+          impact: "После истечения камеры и фронтенд перестанут подключаться к API (TLS-ошибки) — полная остановка."
+          runbook_url: "https://runbook.parking.local/RUNBOOK.md#certificate-expiring"
+
+      - alert: PostgresDiskAlmostFull
+        expr: |
+          (node_filesystem_size_bytes{mountpoint=~"/var/lib/postgresql.*|/data.*",fstype!~"tmpfs|overlay"}
+            - node_filesystem_avail_bytes{mountpoint=~"/var/lib/postgresql.*|/data.*",fstype!~"tmpfs|overlay"})
+            / node_filesystem_size_bytes{mountpoint=~"/var/lib/postgresql.*|/data.*",fstype!~"tmpfs|overlay"} > 0.95
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Диск PostgreSQL {{ $labels.instance }} заполнен более чем на 95 % — отказ записи близко"
+          description: "node_exporter: том данных PostgreSQL заполнен на {{ $value | humanizePercentage }}; при 100 % WAL не пишется (PANIC)."
+          impact: "Через минуты остановятся платежи и сессии; предупреждающий DiskUsageHigh (80 %) уже проигнорирован."
+          runbook_url: "https://runbook.parking.local/RUNBOOK.md#postgres-disk"
+
+      - alert: ExitSuccessRatioLow
+        expr: |
+          sum(rate(barrier_command_total{command="OPEN",result="OK"}[10m]))
+            / sum(rate(barrier_command_total{command="OPEN"}[10m])) < 0.98
+          and sum(rate(barrier_command_total{command="OPEN"}[10m])) > 0.005
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Доля успешных открытий шлагбаума ниже 98 % (SLO 99.5 %)"
+          description: "Симптомный алерт: за 10 минут менее 98 % команд OPEN завершились OK ({{ $value | humanizePercentage }})."
+          impact: "Водители стоят перед закрытым шлагбаумом; операторы открывают вручную, растёт очередь."
+          runbook_url: "https://runbook.parking.local/RUNBOOK.md#exit-success-low"
+
+      - alert: CameraEvents5xxHigh
+        expr: |
+          sum(rate(http_request_duration_seconds_count{route="/api/v1/camera/events",status_class="5xx"}[5m]))
+            / sum(rate(http_request_duration_seconds_count{route="/api/v1/camera/events"}[5m])) > 0.005
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "POST /camera/events: доля 5xx выше 0.5 % (SLO 0.1 %)"
+          description: "Ошибки сервера на приёме событий камер: {{ $value | humanizePercentage }} за 5 минут."
+          impact: "Камеры уходят в ретраи и локальный буфер; часть въездов/выездов обрабатывается с задержкой."
+          runbook_url: "https://runbook.parking.local/RUNBOOK.md#camera-events-errors"
+
+      - alert: ApiErrorBudgetBurnFast
+        expr: |
+          sum(rate(http_request_duration_seconds_count{status_class="5xx"}[1h]))
+            / sum(rate(http_request_duration_seconds_count[1h])) > (14.4 * 0.001)
+          and
+          sum(rate(http_request_duration_seconds_count{status_class="5xx"}[5m]))
+            / sum(rate(http_request_duration_seconds_count[5m])) > (14.4 * 0.001)
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "API: быстрый расход error budget (99.9 %/мес) — 2 % бюджета за час"
+          description: "Multi-window burn rate 14.4× по 5xx за 1 ч и 5 мин одновременно."
+          impact: "При сохранении темпа месячный SLO доступности будет нарушен за 2 дня."
+          runbook_url: "https://runbook.parking.local/RUNBOOK.md#api-error-budget"
+
+  - name: parking.warning
+    rules:
+      - alert: CameraOffline
+        expr: sum by (lot) (camera_status_by_lot{status=~"OFFLINE|SILENT"}) > 0
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "На площадке {{ $labels.lot }} {{ $value }} камер(ы) OFFLINE/SILENT"
+          description: "Камера не присылает heartbeat/события дольше базового интервала (EWMA) 10 минут."
+          impact: "Полоса въезда/выезда без распознавания; события с этой полосы обрабатываются вручную."
+          runbook_url: "https://runbook.parking.local/RUNBOOK.md#camera-offline"
+
+      - alert: CameraClockSkew
+        expr: |
+          sum by (lot) (increase(camera_clock_skew_seconds_count[15m]))
+            - sum by (lot) (increase(camera_clock_skew_seconds_bucket{le="60"}[15m])) >= 3
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Часы камер площадки {{ $labels.lot }} сдвинуты более чем на 60 с"
+          description: "За 15 минут {{ $value }} событий с |skew| > 60 с (событие принято и помечено, шлагбаум открыт)."
+          impact: "Тариф считается по времени события: сдвиг часов искажает длительность стоянки и спорит с чеками."
+          runbook_url: "https://runbook.parking.local/RUNBOOK.md#camera-clock-skew"
+
+      - alert: BarrierFailure
+        expr: sum by (lot) (increase(barrier_command_total{result="FAILED"}[15m])) >= 1
+        for: 0m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Отказ шлагбаума на площадке {{ $labels.lot }}"
+          description: "За 15 минут {{ $value }} команд завершились FAILED после ретраев (breaker может быть OPEN)."
+          impact: "Конкретная полоса не открывается автоматически; сессии уходят в MANUAL_REVIEW."
+          runbook_url: "https://runbook.parking.local/RUNBOOK.md#barrier-failure"
+
+      - alert: ReconciliationBacklog
+        expr: sum(reconciliation_discrepancies_open) > 10
+        for: 1h
+        labels:
+          severity: warning
+        annotations:
+          summary: "Очередь сверки платежей растёт: {{ $value }} открытых расхождений"
+          description: "Более 10 расхождений (MISSING_LOCAL/AMOUNT_MISMATCH/…) не разобраны более часа."
+          impact: "Финансовая отчётность расходится с провайдерами; возможны неучтённые платежи и спорные выезды."
+          runbook_url: "https://runbook.parking.local/RUNBOOK.md#reconciliation-backlog"
+
+      - alert: OutboxLag
+        expr: max(outbox_oldest_pending_age_seconds) > 30
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Лаг outbox: самое старое неопубликованное событие старше 30 с"
+          description: "Publisher не публикует события в Redis Streams (упал, потерял лидерство или Redis недоступен)."
+          impact: "Саги выезда и уведомления задерживаются на величину лага; live-панель отстаёт."
+          runbook_url: "https://runbook.parking.local/RUNBOOK.md#outbox-lag"
+
+      - alert: StreamConsumerLag
+        expr: max(stream_pending_total) > 1000
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Лаг консьюмера стримов: > 1000 сообщений (не доставленных + без ACK) в {{ $labels.stream }}"
+          description: "Consumer group core не успевает обрабатывать события (мало реплик, медленный обработчик или лизинг шарда завис); отставание = XINFO GROUPS lag + pending."
+          impact: "Задержка выезда после оплаты и открытия шлагбаума растёт пропорционально лагу."
+          runbook_url: "https://runbook.parking.local/RUNBOOK.md#stream-consumer-lag"
+
+      - alert: DiskUsageHigh
+        expr: |
+          (node_filesystem_size_bytes{fstype!~"tmpfs|overlay"} - node_filesystem_avail_bytes{fstype!~"tmpfs|overlay"})
+            / node_filesystem_size_bytes{fstype!~"tmpfs|overlay"} > 0.8
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Диск {{ $labels.instance }}:{{ $labels.mountpoint }} заполнен более чем на 80 %"
+          description: "node_exporter: использование файловой системы {{ $value | humanizePercentage }}."
+          impact: "При 100 % PostgreSQL перестанет принимать записи — остановка платежей и сессий."
+          runbook_url: "https://runbook.parking.local/RUNBOOK.md#disk-usage"
+
+      - alert: CameraEventsLatencyHigh
+        expr: |
+          histogram_quantile(0.95, sum by (le) (rate(http_request_duration_seconds_bucket{route="/api/v1/camera/events"}[5m]))) > 0.25
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "POST /camera/events: p95 выше 250 мс (SLO 150 мс)"
+          description: "Латентность приёма событий камер p95 = {{ $value | humanizeDuration }} за 5 минут."
+          impact: "Шлагбаум открывается заметно позже подъезда машины; при росте — таймауты камер и дубликаты."
+          runbook_url: "https://runbook.parking.local/RUNBOOK.md#camera-events-latency"
+
+      - alert: ExitEndToEndSlow
+        expr: histogram_quantile(0.95, sum by (le) (rate(exit_end_to_end_seconds_bucket{paid="no"}[5m]))) > 4
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "EXIT end-to-end p95 выше 4 с (SLO 2 с) без оплаты"
+          description: "От события камеры до открытия шлагбаума проходит p95 {{ $value | humanizeDuration }}: лаг outbox/стримов или медленный драйвер."
+          impact: "Очереди на выезде; водители сигналят операторам."
+          runbook_url: "https://runbook.parking.local/RUNBOOK.md#exit-e2e-slow"
+
+      - alert: PaymentConfirmSlow
+        expr: histogram_quantile(0.95, sum by (le) (rate(payment_confirm_latency_seconds_bucket[10m]))) > 10
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Подтверждение платежа p95 выше 10 с (SLO 5 с)"
+          description: "Провайдер медленно отвечает или вебхуки задерживаются: p95 {{ $value | humanizeDuration }}."
+          impact: "Водители ждут у шлагбаума после оплаты; часть саг уходит в PAYMENT_PENDING_VERIFICATION."
+          runbook_url: "https://runbook.parking.local/RUNBOOK.md#payment-confirm-slow"
+
+      - alert: ApiErrorBudgetBurnSlow
+        expr: |
+          sum(rate(http_request_duration_seconds_count{status_class="5xx"}[6h]))
+            / sum(rate(http_request_duration_seconds_count[6h])) > (6 * 0.001)
+          and
+          sum(rate(http_request_duration_seconds_count{status_class="5xx"}[30m]))
+            / sum(rate(http_request_duration_seconds_count[30m])) > (6 * 0.001)
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "API: медленный расход error budget — 5 % бюджета за 6 часов"
+          description: "Multi-window burn rate 6× по 5xx за 6 ч и 30 мин одновременно."
+          impact: "Месячный SLO 99.9 % под угрозой через ~5 дней при сохранении темпа."
+          runbook_url: "https://runbook.parking.local/RUNBOOK.md#api-error-budget"
+
+      # v2 этап 8: интеграции (RUNBOOK «Вебхуки не доставляются», «Журнал событий теряет записи»)
+      - alert: WebhookDeliveriesDead
+        expr: sum(increase(webhook_delivery_total{result="dead"}[1h])) > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Вебхуки клиентов уходят в «не доставлено» (4 неудачные попытки)"
+          description: "За час {{ $value }} доставок исчерпали повторы 1/5/30 минут. Адрес клиента не отвечает 2xx или заблокирован SSRF-проверкой."
+          impact: "Внешняя система клиента (1С/ERP) не получает события; после 3 суток отказов адрес выключается автоматически."
+          runbook_url: "https://runbook.parking.local/RUNBOOK.md#webhooks-stuck"
+      - alert: EventJournalDropping
+        expr: sum(increase(event_journal_dropped_total[15m])) > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Журнал событий камер теряет записи"
+          description: "За 15 минут потеряно {{ $value }} строк журнала: буфер процесса переполнен или пул bulk недоступен."
+          impact: "Приём событий камер не затронут; разработчики клиента не видят часть запросов в журнале."
+          runbook_url: "https://runbook.parking.local/RUNBOOK.md#event-journal-dropping"

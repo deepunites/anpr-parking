@@ -1,0 +1,1 @@
+"""ANPR Parking Platform."""

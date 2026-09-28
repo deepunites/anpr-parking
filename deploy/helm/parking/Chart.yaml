@@ -1,0 +1,8 @@
+apiVersion: v2
+name: parking
+description: ANPR parking platform — приложение (API, воркеры, Celery, frontend), наблюдаемость (правила, дашборды), сетевые политики, секреты через ESO
+type: application
+version: 0.9.0
+appVersion: "0.9.0"
+kubeVersion: ">=1.29.0-0"
+keywords: [anpr, parking]

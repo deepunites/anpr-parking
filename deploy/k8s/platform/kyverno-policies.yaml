@@ -1,0 +1,54 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: parking-images
+spec:
+  validationFailureAction: Enforce
+  background: true
+  rules:
+    - name: registry-and-immutable-tag
+      match: {any: [{resources: {kinds: [Pod], namespaces: [parking, parking-staging]}}]}
+      validate:
+        message: "образ только из harbor.parking.uz/parking с тегом {semver}-{git-sha}; latest запрещён"
+        foreach:
+          - list: request.object.spec.containers[]
+            pattern:
+              image: "harbor.parking.uz/parking/*:?*.?*.?*-?*"
+          - list: request.object.spec.containers[]
+            deny:
+              conditions:
+                any:
+                  - key: "{{ element.image }}"
+                    operator: Equals
+                    value: "*:latest"
+    - name: signed-images
+      match: {any: [{resources: {kinds: [Pod], namespaces: [parking, parking-staging]}}]}
+      verifyImages:
+        - imageReferences: ["harbor.parking.uz/parking/*"]
+          attestors:
+            - entries:
+                - keyless:
+                    subject: "https://github.com/parking/*"
+                    issuer: "https://token.actions.githubusercontent.com"
+                    rekor: {url: https://rekor.sigstore.dev}
+---
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: parking-pod-hardening
+spec:
+  validationFailureAction: Enforce
+  rules:
+    - name: probes-resources-nonroot
+      match: {any: [{resources: {kinds: [Deployment, StatefulSet], namespaces: [parking, parking-staging]}}]}
+      validate:
+        message: "requests/limits, non-root, readOnlyRootFilesystem и liveness-проба обязательны (§2)"
+        pattern:
+          spec:
+            template:
+              spec:
+                securityContext: {runAsNonRoot: true, seccompProfile: {type: RuntimeDefault}}
+                containers:
+                  - resources: {requests: {cpu: "?*", memory: "?*"}, limits: {cpu: "?*", memory: "?*"}}
+                    securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
+                    livenessProbe: {}

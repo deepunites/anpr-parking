@@ -1,0 +1,17 @@
+{{- $root := . -}}
+{{- $py := list "python" "-c" -}}
+{{ include "parking.workerDeployment" (dict "root" $root "name" "publisher" "component" "publisher" "spec" .Values.publisher "command" (concat $py (list "from parking.workers.runtime import main_publisher; main_publisher()")) "args" (list)) }}
+---
+{{ include "parking.workerDeployment" (dict "root" $root "name" "consumer" "component" "consumer" "spec" .Values.consumer "command" (concat $py (list "from parking.workers.runtime import main_consumer; main_consumer()")) "args" (list)) }}
+---
+{{ include "parking.workerDeployment" (dict "root" $root "name" "replayer" "component" "replayer" "spec" .Values.replayer "command" (concat $py (list "from parking.workers.runtime import main_offline_replayer; main_offline_replayer()")) "args" (list)) }}
+---
+{{ include "parking.workerDeployment" (dict "root" $root "name" "camera-health" "component" "camera-health" "spec" .Values.cameraHealth "command" (concat $py (list "from parking.workers.runtime import main_camera_health; main_camera_health()")) "args" (list)) }}
+---
+{{ include "parking.workerDeployment" (dict "root" $root "name" "webhooks" "component" "webhooks" "spec" .Values.webhooks "command" (concat $py (list "from parking.workers.runtime import main_webhooks; main_webhooks()")) "args" (list)) }}
+{{- range $name, $pool := .Values.celery.pools }}
+---
+{{ include "parking.workerDeployment" (dict "root" $root "name" (printf "celery-%s" $name) "component" (printf "celery-%s" $name) "spec" $pool "command" (list "celery") "args" (list "-A" "parking.workers.celery_app" "worker" "--pool=solo" (printf "--concurrency=%d" (int $pool.concurrency)) "-Q" $pool.queues "--loglevel=WARNING" "--without-gossip" "--without-mingle")) }}
+{{- end }}
+---
+{{ include "parking.workerDeployment" (dict "root" $root "name" "celery-beat" "component" "celery-beat" "spec" .Values.celery.beat "noMetrics" true "command" (list "celery") "args" (list "-A" "parking.workers.celery_app" "beat" "--loglevel=WARNING" "--schedule=/tmp/celerybeat-schedule" "--pidfile=/tmp/celerybeat.pid")) }}

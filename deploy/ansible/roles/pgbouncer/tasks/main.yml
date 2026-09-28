@@ -1,0 +1,19 @@
+- name: PgBouncer 1.25 (PGDG) и HAProxy
+  ansible.builtin.apt: {name: [pgbouncer, haproxy], state: present}
+- name: pgbouncer.ini (transaction pooling, prepared statements, TLS)
+  ansible.builtin.template: {src: ../../../postgres/pgbouncer.ini.j2, dest: /etc/pgbouncer/pgbouncer.ini, owner: postgres, mode: "0640"}
+  notify: reload pgbouncer
+- name: userlist (только auth_user; остальные — auth_query)
+  ansible.builtin.copy:
+    dest: /etc/pgbouncer/userlist.txt
+    owner: postgres
+    mode: "0600"
+    content: |
+      "pgbouncer_auth" "{{ pgbouncer_auth_scram }}"
+      "pgbouncer_admin" "{{ pgbouncer_admin_scram }}"
+- name: haproxy.cfg (primary :5000 / replicas :5001 по REST Patroni)
+  ansible.builtin.template: {src: ../../../postgres/haproxy.cfg.j2, dest: /etc/haproxy/haproxy.cfg, validate: "haproxy -c -f %s"}
+  notify: reload haproxy
+- name: Сервисы
+  ansible.builtin.systemd: {name: "{{ item }}", enabled: true, state: started}
+  loop: [pgbouncer, haproxy]

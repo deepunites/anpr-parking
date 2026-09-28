@@ -1,0 +1,101 @@
+# Gate фазы 7 (наблюдаемость) — 2026-09-19T16:18Z, локальный стенд без root (pgserver, redis, MinIO)
+
+$ uv run ruff check . && uv run ruff format --check .
+All checks passed!
+291 files already formatted
+
+$ uv run mypy --strict src/
+Success: no issues found in 189 source files
+
+$ uv run pytest -q   (полный прогон, фон)
+280 passed, 3 warnings in 180.82s (0:03:00)
+
+$ uv run pytest -q tests/observability -s   (вывод корреляции, трасса, кардинальность, promtool)
+...Checking /home/deep/projects/anpr-parking/deploy/prometheus/alerts.yaml
+  SUCCESS: 22 rules found
+.......  → {"camera_id": "00000000-0000-4000-8000-00000000c101", "event_type": "ENTRY", "result": "ENTRY_CONFIRMED", "event": "anpr_event_accepted", "session_id": "f08fd6f4-64e7-4c88-9dd9-7d561eaaf0d9", "lot_id": "00000000-0000-4000-8000-00000000a101", "correlation_id": "540b459b-be6c-404a-84d2-f04c73f6d672", "level": "info", "trace_id": "cec1710640e6827aa958f1863268b8ed", "message": "anpr_event_accepted"}
+  → {"event": "http.request", "camera_id": "00000000-0000-4000-8000-00000000c101", "session_id": "f08fd6f4-64e7-4c88-9dd9-7d561eaaf0d9", "lot_id": "00000000-0000-4000-8000-00000000a101", "correlation_id": "540b459b-be6c-404a-84d2-f04c73f6d672", "level": "info", "trace_id": "cec1710640e6827aa958f1863268b8ed", "message": "http.request"}
+  → {"correlation_id": "540b459b-be6c-404a-84d2-f04c73f6d672", "event_type": "devices.barrier.command_requested.v1", "stream": "events:7", "event": "outbox_event_published", "level": "debug", "message": "outbox_event_published"}
+  → {"correlation_id": "540b459b-be6c-404a-84d2-f04c73f6d672", "event_type": "parking.session.created.v1", "stream": "events:1", "event": "outbox_event_published", "level": "debug", "message": "outbox_event_published"}
+  → {"event_type": "parking.session.created.v1", "event": "consumer_handled", "camera_id": "00000000-0000-4000-8000-00000000c101", "session_id": "f08fd6f4-64e7-4c88-9dd9-7d561eaaf0d9", "lot_id": "00000000-0000-4000-8000-00000000a101", "correlation_id": "540b459b-be6c-404a-84d2-f04c73f6d672", "level": "debug", "message": "consumer_handled"}
+  → {"result": "OK", "event": "barrier_command_completed", "event_type": "devices.barrier.command_requested.v1", "session_id": "f08fd6f4-64e7-4c88-9dd9-7d561eaaf0d9", "lot_id": "00000000-0000-4000-8000-00000000a101", "correlation_id": "540b459b-be6c-404a-84d2-f04c73f6d672", "level": "info", "trace_id": "cec1710640e6827aa958f1863268b8ed", "message": "barrier_command_completed"}
+  → {"event_type": "devices.barrier.command_requested.v1", "event": "consumer_handled", "session_id": "f08fd6f4-64e7-4c88-9dd9-7d561eaaf0d9", "lot_id": "00000000-0000-4000-8000-00000000a101", "correlation_id": "540b459b-be6c-404a-84d2-f04c73f6d672", "level": "debug", "message": "consumer_handled"}
+  → {"correlation_id": "540b459b-be6c-404a-84d2-f04c73f6d672", "event_type": "devices.barrier.command_completed.v1", "stream": "events:7", "event": "outbox_event_published", "level": "debug", "message": "outbox_event_published"}
+  → {"event_type": "devices.barrier.command_completed.v1", "event": "consumer_handled", "session_id": "f08fd6f4-64e7-4c88-9dd9-7d561eaaf0d9", "lot_id": "00000000-0000-4000-8000-00000000a101", "correlation_id": "540b459b-be6c-404a-84d2-f04c73f6d672", "level": "debug", "message": "consumer_handled"}
+.metrics cardinality: 92,413 series (< 100,000) → /home/deep/projects/anpr-parking/docs/backend/metrics-cardinality.md
+.
+........
+EXIT trace a3914dc325ba9e0b2a2084ade9a7c1ff: 18 spans → /home/deep/projects/anpr-parking/docs/backend/trace-exit-saga.json
+......
+26 passed in 21.22s
+
+$ PARKING_ENV=dev uv run alembic upgrade head && uv run alembic downgrade -1 && uv run alembic upgrade head
+INFO  [alembic.runtime.migration] Running downgrade 0012 -> 0011, Billing фазы 5: ответ вебхука в inbox, индексы джобов верификации/возвратов/предоплат
+INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+INFO  [alembic.runtime.migration] Running upgrade 0011 -> 0012, Billing фазы 5: ответ вебхука в inbox, индексы джобов верификации/возвратов/предоплат
+
+$ uv run python scripts/export_openapi.py && uv run python scripts/export_events.py   (/metrics и /health вне OpenAPI)
+written /home/deep/projects/anpr-parking/docs/openapi.json
+written /home/deep/projects/anpr-parking/docs/EVENTS.md (27 events)
+
+$ promtool check rules deploy/prometheus/alerts.yaml
+Checking ../deploy/prometheus/alerts.yaml
+  SUCCESS: 22 rules found
+
+
+$ promtool test rules deploy/prometheus/alerts_test.yaml   (пороги и защита от шума на синтетических рядах)
+Unit Testing:  ../deploy/prometheus/alerts_test.yaml
+  SUCCESS
+
+
+$ uv run python scripts/alert_sim.py   (живой стенд: Prometheus 2.54.1 скрейпит e2e-API, for ÷10; PostgresReplicaLag/BackupMissing — ожидаемо без экспортеров на стенде)
+# alert simulation: SCALE=1/10 (for: 1m → 6s), scrape/eval 1s
+prometheus prometheus: rules loaded = 22, health = ['ok']
+baseline: dependency_up{postgres}=1, outbox_oldest_pending_age_seconds=0, alerts={'PostgresReplicaLag': 'firing', 'BackupMissing': 'pending'}
+
+## scenario 1: kill outbox publisher, then one camera ENTRY → outbox row stays PENDING
+camera event → HTTP 200 (t=0.0s)
+OutboxLag pending after 31.6s (age>30s threshold), age=30.937637s
+OutboxLag FIRING after 43.8s total (expected ≈ 30s threshold + 12s for + ≤6s scrape/refresh)
+
+## scenario 2: stop PostgreSQL (pg_ctl stop -m fast)
+PostgresPrimaryDown pending after 4.0s, dependency_up{postgres}=0, offline_mode_active=0
+PostgresPrimaryDown FIRING after 10.0s (expected ≈ 6s for + ≤6s detection)
+camera event during outage → HTTP 202 (202 = offline buffer)
+PostgreSQL back → PostgresPrimaryDown resolved after 3.5s, dependency_up{postgres}=1
+
+final alerts: {'PostgresReplicaLag': 'firing', 'BackupMissing': 'pending', 'OutboxLag': 'firing'}
+
+$ python3 deploy/grafana/gen_dashboards.py
+operations.json: 14 panels
+slo.json: 9 panels
+pipeline.json: 14 panels
+business.json: 10 panels
+
+$ cat docs/backend/metrics-cardinality.md | head -12
+# Кардинальность метрик (расчёт, фаза 7 §2)
+
+Оценка сверху при 3 репликах API и 2 воркерах, 1000 площадках. Генерируется тестом `tests/observability/test_metrics.py`; бюджет 100,000 рядов.
+
+| Метрика | Тип | Лейблы | Комбинаций | Рядов/инстанс | Процессы | Инстансов | Рядов |
+|---|---|---|---|---|---|---|---|
+| `exit_total` | Counter | lot, result | 7,000 | 7,000 | api | 3 | 21,000 |
+| `entry_total` | Counter | lot, result | 6,000 | 6,000 | api | 3 | 18,000 |
+| `camera_clock_skew_seconds` | Histogram | lot | 1,000 | 5,000 | api | 3 | 15,000 |
+| `barrier_command_total` | Counter | lot, command, result | 6,000 | 6,000 | worker | 2 | 12,000 |
+| `http_request_duration_seconds` | Histogram | method, route, status_class | 320 | 3,520 | api | 3 | 10,560 |
+| `camera_status_by_lot` | Gauge | lot, status | 5,000 | 5,000 | singleton | 1 | 5,000 |
+…
+| **Итого** | | | | | | | **92,413** |
+
+$ frontend: npm run lint && npx vitest run && npm run build && npm run check:api && npm run e2e
+eslint src e2e — без замечаний
+ Test Files  3 passed (3)
+      Tests  9 passed (9)
+dist/assets/index-GjS8Z25j.css         21.42 kB │ gzip:   5.05 kB
+dist/assets/index-CSEHCgMz.js         282.01 kB │ gzip:  91.02 kB │ map: 1,227.41 kB
+dist/assets/sentry-CfJOVG_X.js        579.20 kB │ gzip: 191.40 kB │ map: 2,882.01 kB
+✓ built in 20.60s
+api types are in sync with docs/openapi.json
+  5 passed (1.3m)

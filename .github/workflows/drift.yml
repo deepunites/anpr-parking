@@ -1,0 +1,30 @@
+# Дрейф инфраструктуры (фаза 9 §6): terraform plan по расписанию; любое изменение → алерт (issue + Alertmanager webhook).
+name: infra-drift
+on:
+  schedule: [{cron: "17 */6 * * *"}]
+  workflow_dispatch:
+permissions: {contents: read, issues: write}
+jobs:
+  plan:
+    strategy:
+      matrix: {env: [staging, production]}
+    runs-on: [self-hosted, "${{ matrix.env }}"]
+    environment: ${{ matrix.env }}-readonly           # креды только на чтение: plan, не apply
+    steps:
+      - uses: actions/checkout@v4
+      - uses: opentofu/setup-opentofu@v1
+        with: {tofu_version: 1.10.6}
+      - id: plan
+        run: |
+          cd deploy/terraform/envs/${{ matrix.env }}
+          tofu init -input=false
+          set +e; tofu plan -detailed-exitcode -input=false -lock=false -out=/tmp/plan.bin > /tmp/plan.txt; echo "code=$?" >> "$GITHUB_OUTPUT"
+      - if: steps.plan.outputs.code == '2'
+        name: Дрейф обнаружен — алерт
+        run: |
+          gh issue create --title "infra drift: ${{ matrix.env }} $(date -u +%F)" --body-file /tmp/plan.txt --label drift
+          curl -fsS -X POST "$ALERTMANAGER_URL/api/v2/alerts" -H 'Content-Type: application/json' \
+            -d "[{\"labels\":{\"alertname\":\"InfraDrift\",\"severity\":\"warning\",\"env\":\"${{ matrix.env }}\"},\"annotations\":{\"summary\":\"terraform plan показал изменения вне git\"}}]"
+        env: {GH_TOKEN: "${{ github.token }}", ALERTMANAGER_URL: "${{ vars.ALERTMANAGER_URL }}"}
+      - if: steps.plan.outputs.code == '1'
+        run: exit 1

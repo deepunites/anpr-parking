@@ -1,0 +1,47 @@
+;; PgBouncer 1.25 в режиме transaction (§3). Совместимость с RLS: tenant-контекст ставится set_config(..., true) — умирает
+;; вместе с транзакцией (tests/db/test_pgbouncer_rls.py: 0 утечек; session-level SET утекает в 100 % — запрещён
+;; tests/architecture). Session-уровневые LISTEN/advisory lock (outbox publisher) идут напрямую к primary (HAProxy :5000),
+;; минуя пулер. max_prepared_statements ≥ размера кеша asyncpg (SQLAlchemy prepared statements через пулер, PgBouncer ≥ 1.21).
+[databases]
+parking = host=127.0.0.1 port=5000 dbname=parking pool_size=100      ; HAProxy :5000 → primary
+parking_ro = host=127.0.0.1 port=5001 dbname=parking pool_size=50    ; HAProxy :5001 → реплики (отчёты)
+
+[pgbouncer]
+listen_addr = 0.0.0.0
+listen_port = 6432
+unix_socket_dir = /var/run/pgbouncer
+auth_type = scram-sha-256
+auth_file = /etc/pgbouncer/userlist.txt
+auth_user = pgbouncer_auth
+auth_query = SELECT usename, passwd FROM pgbouncer.get_auth($1)
+pool_mode = transaction
+max_client_conn = 2000
+default_pool_size = 50
+min_pool_size = 5
+reserve_pool_size = 10
+reserve_pool_timeout = 3
+server_reset_query =
+server_reset_query_always = 0
+ignore_startup_parameters = extra_float_digits,options
+max_prepared_statements = 500
+server_lifetime = 1800
+server_idle_timeout = 300
+server_connect_timeout = 3
+server_login_retry = 1
+query_wait_timeout = 30
+client_idle_timeout = 0
+tcp_keepalive = 1
+tcp_keepidle = 30
+tcp_keepintvl = 10
+server_tls_sslmode = verify-full
+server_tls_ca_file = /etc/pgbouncer/ca.crt
+client_tls_sslmode = require
+client_tls_cert_file = /etc/pgbouncer/server.crt
+client_tls_key_file = /etc/pgbouncer/server.key
+stats_period = 60
+log_connections = 0
+log_disconnections = 0
+admin_users = pgbouncer_admin
+stats_users = prometheus
+logfile = /var/log/pgbouncer/pgbouncer.log
+pidfile = /var/run/pgbouncer/pgbouncer.pid

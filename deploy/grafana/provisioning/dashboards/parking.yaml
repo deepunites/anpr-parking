@@ -1,0 +1,14 @@
+# Grafana file-provisioning (docker-compose/VM). В Kubernetes — sidecar по ConfigMap с меткой grafana_dashboard="1"
+# (deploy/helm/parking/templates/grafana-dashboards.yaml).
+apiVersion: 1
+providers:
+  - name: parking
+    orgId: 1
+    folder: Parking
+    type: file
+    disableDeletion: true
+    allowUiUpdates: false   # дашборды — только из git
+    updateIntervalSeconds: 60
+    options:
+      path: /var/lib/grafana/dashboards/parking
+      foldersFromFilesStructure: false

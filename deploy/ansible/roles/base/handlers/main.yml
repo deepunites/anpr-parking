@@ -1,0 +1,2 @@
+- name: update ca
+  ansible.builtin.command: update-ca-certificates

@@ -1,0 +1,31 @@
+[postgres]
+%{ for name, v in postgres ~}
+${name} ansible_host=${v.ip} patroni_role=${v.role}
+%{ endfor ~}
+
+[pgbouncer]
+%{ for name, ip in pgbouncer ~}
+${name} ansible_host=${ip}
+%{ endfor ~}
+
+[redis]
+%{ for name, ip in redis ~}
+${name} ansible_host=${ip}
+%{ endfor ~}
+
+[minio]
+%{ for name, ip in minio ~}
+${name} ansible_host=${ip}
+%{ endfor ~}
+
+[backup_verify]
+%{ for name, ip in verify ~}
+${name} ansible_host=${ip}
+%{ endfor ~}
+
+[all:vars]
+env=${env}
+pgbackrest_stanza=parking
+pg_hosts=${jsonencode([for name, v in postgres : v.ip])}
+redis_hosts=${jsonencode([for name, ip in redis : ip])}
+etcd_hosts=${jsonencode([for name, v in postgres : "${v.ip}:2379"])}

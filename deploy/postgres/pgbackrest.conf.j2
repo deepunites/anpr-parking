@@ -1,0 +1,39 @@
+# pgBackRest 2.5x — репозиторий в MinIO (отдельный сервер, бакет с версионированием, шифрование репозитория AES-256-CBC).
+# Расписание (systemd timers, роль pgbackrest): full — ежедневно 01:00, diff — каждые 6 ч, WAL — непрерывно (archive-push);
+# retention: 30 полных, WAL — 7 дней (archive-retention-type=time); PITR через recovery --type=time.
+[global]
+repo1-type=s3
+repo1-s3-endpoint={{ minio_backup_endpoint }}
+repo1-s3-bucket={{ minio_backup_bucket }}
+repo1-s3-region=uz-tashkent-1
+repo1-s3-key={{ minio_backup_access_key }}
+repo1-s3-key-secret={{ minio_backup_secret_key }}
+repo1-s3-uri-style=path
+repo1-path=/parking-{{ env }}
+repo1-cipher-type=aes-256-cbc
+repo1-cipher-pass={{ pgbackrest_cipher_pass }}
+repo1-retention-full=30
+repo1-retention-full-type=count
+repo1-retention-diff=28
+repo1-retention-archive=7
+repo1-retention-archive-type=time
+repo1-bundle=y
+repo1-block=y                       # блочные инкрементальные бэкапы: diff каждые 6 ч дешёвые
+compress-type=zst
+compress-level=3
+process-max=4
+archive-async=y
+spool-path=/var/spool/pgbackrest
+log-level-console=info
+log-level-file=detail
+delta=y
+backup-standby=y                    # базовый бэкап снимается с async standby, не нагружая primary
+
+[{{ pgbackrest_stanza }}]
+pg1-path=/var/lib/postgresql/16/main
+pg1-port=5432
+pg1-host={{ pg_hosts[0] }}
+pg2-path=/var/lib/postgresql/16/main
+pg2-host={{ pg_hosts[1] }}
+pg3-path=/var/lib/postgresql/16/main
+pg3-host={{ pg_hosts[2] }}

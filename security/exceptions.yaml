@@ -1,0 +1,50 @@
+# Принятые риски сканеров безопасности (фаза 8 §7). Исключение без срока пересмотра не принимается:
+# scripts/security_scan.py падает, если review_by в прошлом.
+exceptions:
+  - id: bandit-B608-semgrep-sqlalchemy-text
+    tools: [bandit, semgrep]
+    rules: [B608, python.sqlalchemy.security.audit.avoid-sqlalchemy-text.avoid-sqlalchemy-text]
+    scope: backend/src/parking/modules/*/infrastructure/repositories.py
+    justification: >
+      SQL собирается из констант колонок/скоупа (f-строки), данные передаются только bind-параметрами.
+      Гарантируется статически: tests/architecture/test_sql_fragments.py (интерполировать можно только модульные
+      константы из литералов и локальные литеральные фрагменты); динамически: tests/security/test_hardening.py
+      (инъекции во все query-параметры и в номер) и tests/invariants (RLS).
+    accepted_on: 2026-09-20
+    review_by: 2027-03-20
+    owner: backend
+
+  - id: bandit-B101-assert
+    tools: [bandit]
+    rules: [B101]
+    scope: backend/src
+    justification: >
+      assert используется как внутренний инвариант после операций в той же транзакции (например, «запись только что
+      вставлена»), не как валидация входа; приложение не запускается с -O (Dockerfile/Helm — фаза 9 фиксирует
+      PYTHONOPTIMIZE не задан). Валидация входа — Pydantic и явные исключения домена.
+    accepted_on: 2026-09-20
+    review_by: 2027-03-20
+    owner: backend
+
+  - id: weak-hash-provider-protocols
+    tools: [bandit, semgrep]
+    rules: [B324, python.lang.security.insecure-hash-algorithms-md5.insecure-hash-algorithm-md5, python.lang.security.insecure-hash-algorithms.insecure-hash-algorithm-sha1]
+    scope: backend/src/parking/modules/billing/infrastructure/{gateways,webhooks}.py
+    justification: >
+      MD5 (sign_string Click SHOP API) и SHA1 (Auth-заголовок Click Merchant API) навязаны протоколами провайдера;
+      секрет участвует в хеше, сравнение — hmac.compare_digest, окно времени и inbox-дедуп ограничивают повтор.
+      Замена невозможна без смены протокола провайдером.
+    accepted_on: 2026-09-20
+    review_by: 2027-03-20
+    owner: backend
+
+  - id: gitleaks-test-fixtures
+    tools: [gitleaks]
+    rules: [generic-api-key, jwt, private-key]
+    scope: backend/tests/**, frontend/src/**/*.test.ts
+    justification: >
+      Фиктивные ключи камер, JWT и PEM-заглушки в тестах редакторов логов/конфига; перечислены явно в
+      security/gitleaks.toml (regexes), не путём исключения каталогов тестов целиком.
+    accepted_on: 2026-09-20
+    review_by: 2027-03-20
+    owner: backend

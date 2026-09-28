@@ -1,0 +1,4 @@
+- name: pgBackRest на verify-ВМ (только чтение репозитория)
+  ansible.builtin.apt: {name: pgbackrest, state: present}
+- name: Конфигурация репозитория (те же креды чтения, без archive-push)
+  ansible.builtin.template: {src: ../../../postgres/pgbackrest.conf.j2, dest: /etc/pgbackrest/pgbackrest.conf, owner: postgres, mode: "0600"}

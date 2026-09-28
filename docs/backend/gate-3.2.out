@@ -1,0 +1,21 @@
+$ uv run ruff check . && uv run ruff format --check .
+All checks passed!
+unformatted: File would be reformatted
+  --> alembic/versions/0009_phase3_grants.py:6:1
+  |
+5 | """
+6 +
+7 | from __future__ import annotations
+  |
+
+1 file would be reformatted, 116 files already formatted
+$ uv run mypy --strict src/
+Success: no issues found in 72 source files
+$ uv run pytest -q
+113 passed, 1 warning in 40.86s
+$ alembic upgrade head && downgrade -1 && upgrade head
+INFO  [alembic.runtime.migration] Running downgrade 0009 -> 0008, Права фазы 3: скоуп площадок пользователя пересобирается (DELETE user_lot)
+INFO  [alembic.runtime.migration] Running upgrade 0008 -> 0009, Права фазы 3: скоуп площадок пользователя пересобирается (DELETE user_lot)
+0009 (head)
+$ argon2 (docs/backend/argon2-bench.out)
+t=2 m=64MiB p=1: median 249 ms, max 296 ms

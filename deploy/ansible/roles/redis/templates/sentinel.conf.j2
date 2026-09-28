@@ -1,0 +1,13 @@
+# Sentinel — {{ inventory_hostname }} ({{ env }}); начальный master — первая ВМ инвентаря, дальше файл ведёт сам Sentinel
+bind {{ ansible_host }} 127.0.0.1
+port 26379
+protected-mode yes
+requirepass {{ redis_sentinel_password }}
+sentinel monitor parking {{ hostvars[groups['redis'][0]].ansible_host }} 6379 2
+sentinel auth-pass parking {{ redis_password }}
+sentinel down-after-milliseconds parking 5000
+sentinel failover-timeout parking 30000
+sentinel parallel-syncs parking 1
+sentinel resolve-hostnames no
+dir /var/lib/redis
+logfile /var/log/redis/redis-sentinel.log

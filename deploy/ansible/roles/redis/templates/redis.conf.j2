@@ -1,0 +1,21 @@
+# Redis 7 — {{ inventory_hostname }} ({{ env }}); генерируется Ansible (roles/redis)
+bind {{ ansible_host }} 127.0.0.1
+port 6379
+protected-mode yes
+requirepass {{ redis_password }}
+masterauth {{ redis_password }}
+{% if inventory_hostname != groups['redis'][0] %}
+replicaof {{ hostvars[groups['redis'][0]].ansible_host }} 6379
+{% endif %}
+replica-serve-stale-data no
+min-replicas-to-write 1
+min-replicas-max-lag 10
+appendonly yes
+appendfsync everysec
+save ""
+maxmemory {{ redis_maxmemory | default('2gb') }}
+maxmemory-policy volatile-lru
+tcp-keepalive 60
+timeout 0
+dir /var/lib/redis
+logfile /var/log/redis/redis-server.log

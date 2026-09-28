@@ -1,0 +1,69 @@
+# Gate фазы 4 — реальный вывод команд (backend/, 2026-09-19T02:26Z, dev-машина 2 vCPU без Docker: pgserver + Redis + MinIO локально)
+
+## Общий gate §13 CORE
+$ uv run ruff check . && uv run ruff format --check .
+All checks passed!
+247 files already formatted
+$ uv run mypy --strict src/
+Success: no issues found in 165 source files
+$ uv run alembic upgrade head && uv run alembic downgrade -1 && uv run alembic upgrade head
+INFO  [alembic.runtime.migration] Running downgrade 0011 -> 0010, Обязательство (PENDING) не знает способа оплаты: method NULL до факта оплаты
+INFO  [alembic.runtime.migration] Running upgrade 0010 -> 0011, Обязательство (PENDING) не знает способа оплаты: method NULL до факта оплаты
+0011 (head)
+$ uv run pytest -q
+218 passed, 1 warning in 109.07s (0:01:49)
+$ docs/openapi.json и docs/EVENTS.md сгенерированы из кода; openapi_compat против версии фазы 3.5
+written docs/openapi.json
+written docs/EVENTS.md (20 events)
+compatible
+
+## Gate фазы 4 (uv run pytest tests/devices tests/anpr tests/media -s — строки GATE и лог breaker)
+GATE barrier breaker log:
+   {'barrier_id': '00000000-0000-4000-8000-00000000e101', 'attempt': 1, 'of': 3, 'error': 'controller timeout', 'failures': 1, 'event': 'barrier_attempt_failed'}
+   {'barrier_id': '00000000-0000-4000-8000-00000000e101', 'attempt': 2, 'of': 3, 'error': 'controller timeout', 'failures': 2, 'event': 'barrier_attempt_failed'}
+   {'barrier_id': '00000000-0000-4000-8000-00000000e101', 'attempt': 3, 'of': 3, 'error': 'controller timeout', 'failures': 3, 'event': 'barrier_attempt_failed'}
+   {'command_id': 'bc977667-9cd4-4bba-b3fc-879a6ed012b9', 'result': 'FAILED', 'latency_ms': 0, 'event': 'barrier_command_completed'}
+   {'barrier_id': '00000000-0000-4000-8000-00000000e101', 'attempt': 1, 'of': 3, 'error': 'controller timeout', 'failures': 4, 'event': 'barrier_attempt_failed'}
+   {'barrier_id': '00000000-0000-4000-8000-00000000e101', 'old': 'closed', 'new': 'open', 'event': 'barrier_breaker_state'}
+   {'barrier_id': '00000000-0000-4000-8000-00000000e101', 'attempt': 2, 'of': 3, 'error': 'controller timeout', 'failures': 5, 'event': 'barrier_attempt_failed'}
+   {'barrier_id': '00000000-0000-4000-8000-00000000e101', 'retry_after': 60.0, 'event': 'barrier_circuit_open'}
+   {'command_id': '9d4d5e49-7f50-4ac3-820c-f11a4217222e', 'result': 'FAILED', 'latency_ms': 0, 'event': 'barrier_command_completed'}
+   {'barrier_id': '00000000-0000-4000-8000-00000000e101', 'retry_after': 60.0, 'event': 'barrier_circuit_open'}
+   {'command_id': '208a4502-147d-42e9-b85b-0f1421e53202', 'result': 'FAILED', 'latency_ms': 0, 'event': 'barrier_command_completed'}
+   {'barrier_id': '00000000-0000-4000-8000-00000000e101', 'old': 'open', 'new': 'half_open', 'event': 'barrier_breaker_state'}
+   {'barrier_id': '00000000-0000-4000-8000-00000000e101', 'old': 'half_open', 'new': 'closed', 'event': 'barrier_breaker_state'}
+   {'command_id': '3d226510-5ced-4731-96d6-adbb9c1b0c66', 'result': 'OK', 'latency_ms': 0, 'event': 'barrier_command_completed'}
+GATE camera-auth timing (ms): wrong median=0.317 p95=0.633; missing median=0.284 p95=0.535; ratio=1.12
+GATE camera health: UNKNOWN→ONLINE→OFFLINE→SILENT, flushed heartbeats=1
+GATE 100 parallel identical events: 1 session a6b7d0bd-20a8-43c4-afb7-058a9d28568c, responses identical, duplicates=99
+GATE clock skew: accepted, clock_skew_seconds=599 (max 120 → marked)
+GATE replay: month-old event → 422 REPLAY
+GATE image key: foreign tenant/camera/traversal → 422 INVALID_IMAGE_KEY; own key → 200
+GATE blacklist: ENTRY_DENIED, session 994fedb4-c9f0-4a25-9a62-158cc8a6ef02 MANUAL_REVIEW, barrier commands = 0
+GATE offline: pg_ctl stop → 10×202 queued=true, XLEN anpr:offline = 11, breaker=open
+GATE replay: processed=11 duplicates=1; anpr_event +10, sessions +10, queued_offline rows=10, offline barrier audit=10
+GATE xautoclaim: 5 pending от убитого consumer'а подобраны, потерь нет (5/5 в anpr_event)
+GATE dlq: 3 попытки → anpr:dlq; GET /admin/dlq; replay dry_run не меняет; replay → anpr:offline, аудит DLQ_REPLAY
+GATE media: presigned POST ok=204, oversize=400 EntityTooLarge, executable type=403, key hijack=403; presigned GET 200
+GATE mc ilm rule ls local/anpr-media:
+│ Expiration for latest version (Expiration)                                            │
+│ ID                   │ STATUS  │ PREFIX │ TAGS │ DAYS TO EXPIRE │ EXPIRE DELETEMARKER │
+│ damu6fk8tv1et6mtq6u0 │ Enabled │ -      │ -    │             90 │ false               │
+│ Expiration for older versions (NoncurrentVersionExpiration)                     │
+│ ID                   │ STATUS  │ PREFIX │ TAGS │ DAYS TO EXPIRE │ KEEP VERSIONS │
+│ damu6fk8tv1et6mtq6u0 │ Enabled │ -      │ -    │              7 │             0 │
+41 passed in 28.25s
+
+## Аутентификация камеры под нагрузкой (scripts/bench_camera_auth.py, PARKING_ENV=dev)
+camera auth bench [in-process ASGI (генератор и API на одном ядре)]: target 100 RPS × 10 s → 1000 requests in 10.0 s (100 RPS achieved); statuses={204: 1000}
+request latency ms: p50=4.36 p95=6.60 p99=84.30 max=112.79 mean=5.87
+camera_auth_seconds: count=1050 mean=1.994 ms
+camera_auth_seconds buckets (le → cumulative): 0.0005s:0, 0.001s:231, 0.002s:976, 0.005s:1031, 0.01s:1032, 0.025s:1035, 0.05s:1039, 0.1s:1050, +Infs:1050
+camera auth bench [in-process ASGI (генератор и API на одном ядре)]: target 200 RPS × 10 s → 2000 requests in 10.0 s (200 RPS achieved); statuses={204: 2000}
+request latency ms: p50=4.05 p95=58.20 p99=258.52 max=279.99 mean=13.77
+camera_auth_seconds: count=2050 mean=6.582 ms
+camera_auth_seconds buckets (le → cumulative): 0.0005s:0, 0.001s:1007, 0.002s:1819, 0.005s:1925, 0.01s:1939, 0.025s:1960, 0.05s:1992, 0.1s:1996, +Infs:2050
+
+auth only sequential (container.camera_auth.authenticate, кеш кандидатов тёплый): 0.667 ms mean
+sequential full request POST /api/v1/camera/heartbeat in-process: 3.54 ms/request
+внешний uvicorn --workers 2 + генератор на той же 2-vCPU машине: 72 RPS достигнуто из 200 — CPU-потолок стенда, не аутентификации (см. DEVICES.md §1.2)

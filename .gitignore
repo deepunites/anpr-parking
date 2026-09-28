@@ -1,0 +1,49 @@
+# Отдельный проект (игровой клуб) — не часть ANPR Parking
+/club/
+
+# Секреты и локальные учётки стендов
+.env
+.env.*
+!.env.example
+LOGINS.txt
+*.pem
+*.key
+deploy/local/state/
+
+# Данные локальных стендов (PostgreSQL, Redis, MinIO) и кеши инструментов
+.pgdata/
+.pgext/
+.pgha/
+.redis/
+.redis-data/
+.minio/
+.minio-data/
+.minio-data-replica/
+.e2e/
+.venv/
+node_modules/
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.hypothesis/
+.security-scan/
+.coverage
+coverage.json
+htmlcov/
+mutants/
+dist/
+playwright-report/
+test-results/
+frontend/e2e/.stack.json
+*.tmp.mjs
+
+# Terraform: провайдеры и состояние (в state бывают секреты)
+.terraform/
+*.tfstate
+*.tfstate.*
+crash.log
+
+# Локальные настройки Claude Code (пути других проектов)
+/.claude/

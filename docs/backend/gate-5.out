@@ -1,0 +1,43 @@
+# Gate фазы 5 — реальный вывод команд (backend/, 2026-09-19T04:05Z, dev-машина без Docker: pgserver + Redis локально)
+
+## Общий gate §13 CORE
+$ uv run ruff check . && uv run ruff format --check .
+All checks passed!
+272 files already formatted
+$ uv run mypy --strict src/
+Success: no issues found in 181 source files
+$ uv run pytest -q
+250 passed, 1 warning in 138.37s (0:02:18)
+$ uv run alembic upgrade head && uv run alembic downgrade -1 && uv run alembic upgrade head
+INFO  [alembic.runtime.migration] Running downgrade 0012 -> 0011, Billing фазы 5: ответ вебхука в inbox, индексы джобов верификации/возвратов/предоплат
+INFO  [alembic.runtime.migration] Running upgrade 0011 -> 0012, Billing фазы 5: ответ вебхука в inbox, индексы джобов верификации/возвратов/предоплат
+0012 (head)
+$ docs/openapi.json и docs/EVENTS.md сгенерированы из кода; openapi_compat против версии фазы 4
+written docs/openapi.json
+written docs/EVENTS.md (27 events)
+compatible
+
+## Gate фазы 5 (строки GATE из uv run pytest -q -s; тесты — tests/billing/)
+[x] двойная отправка одного платежа → одно списание — test_cash.py::test_cash_confirm_settles_saga_and_is_idempotent (1 PAID, 1 attempt), test_online.py::test_checkout_twice_creates_one_provider_intent (create_calls == 1)
+GATE I-6: UPDATE/DELETE PAID payment rejected by trigger app.payment_guard
+GATE secrets: 0 provider secrets / card numbers in captured logs, payment_attempt, audit_log, webhook_inbox
+GATE provider timeout: create_calls=1, status_calls≥1, saga PAYMENT_PENDING_VERIFICATION → PAID via status()
+GATE barrier failure after payment: payment PAID kept, no refund, saga MANUAL_REVIEW
+GATE reconciliation: 5 kinds found, full report stored, MISSING_LOCAL→payment created, STATUS_MISMATCH→pulled, MISSING_REMOTE kept
+GATE refund > amount: code → 422 (refundable=800000); DB trigger → CheckViolationError; REFUNDED derived
+GATE webhook ×5: one PAID, one confirmed event, identical responses
+GATE bad signature: -32504, audit WEBHOOK_REJECTED (actor PROVIDER)
+GATE duplicate provider payment: second PAID payment + DUPLICATE_REMOTE discrepancy (refund queue)
+GATE orphan webhook: ORPHAN → APPLIED after payment appeared, one confirmed event
+[x] сумма, присланная клиентом и отличная от посчитанной → отказ — test_cash.py::test_declared_amount_mismatch_is_refused (422 AMOUNT_MISMATCH, платёж остался PENDING)
+[x] property-based: сумма всех возвратов никогда не превышает сумму платежа — test_refunds.py::test_property_refund_sum_never_exceeds_payment (hypothesis, 300 примеров) + test_property_refund_sum_in_database (случайные последовательности против триггера)
+[x] вебхук с неверной подписью отклонён, попытка в аудите — см. GATE bad signature; Click: sign_string → error -1 (test_webhooks.py::test_click_prepare_complete_*)
+
+## grep по логу полного прогона тестов (-s, structlog JSON в stdout): секреты провайдеров, bearer-секрет шлагбаума, номер карты
+--- secret grep ---
+PaymeSecretKey-9f8e7d6c5b4a: 0
+ClickSecretKey-1a2b3c4d5e6f: 0
+test-bearer-secret: 0
+8600123456789012: 0
+16-digit numbers: 0
+(строк в логе: 1225; в самом тесте test_gateways.py секреты ищутся ещё в payment_attempt, audit_log и webhook_inbox)

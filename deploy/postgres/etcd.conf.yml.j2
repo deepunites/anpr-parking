@@ -1,0 +1,23 @@
+# etcd v3.5 — DCS Patroni, 3 члена на тех же ВМ PostgreSQL (кворум 2/3), TLS peer/client.
+name: {{ inventory_hostname }}
+data-dir: /var/lib/etcd
+listen-peer-urls: https://{{ ansible_host }}:2380
+listen-client-urls: https://{{ ansible_host }}:2379,https://127.0.0.1:2379
+initial-advertise-peer-urls: https://{{ ansible_host }}:2380
+advertise-client-urls: https://{{ ansible_host }}:2379
+initial-cluster: {{ etcd_initial_cluster }}
+initial-cluster-token: parking-{{ env }}
+initial-cluster-state: new
+auto-compaction-mode: periodic
+auto-compaction-retention: "8"
+quota-backend-bytes: 2147483648
+client-transport-security:
+  cert-file: /etc/etcd/etcd.crt
+  key-file: /etc/etcd/etcd.key
+  trusted-ca-file: /etc/etcd/ca.crt
+  client-cert-auth: true
+peer-transport-security:
+  cert-file: /etc/etcd/etcd.crt
+  key-file: /etc/etcd/etcd.key
+  trusted-ca-file: /etc/etcd/ca.crt
+  client-cert-auth: true

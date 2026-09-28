@@ -1,0 +1,53 @@
+{
+  "name": "anpr-parking-frontend",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "gen:api": "openapi-typescript ../docs/openapi.json -o src/api/schema.d.ts",
+    "dev": "vite",
+    "build": "npm run gen:api && tsc --noEmit && vite build",
+    "build:image": "tsc --noEmit && vite build",
+    "preview": "vite preview --port 4173 --strictPort",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src e2e",
+    "test": "vitest run",
+    "e2e": "playwright test",
+    "lighthouse": "node scripts/lighthouse.mjs",
+    "check:api": "node scripts/check-api-drift.mjs"
+  },
+  "dependencies": {
+    "@sentry/react": "^10.75.0",
+    "@tanstack/react-query": "^5.90.0",
+    "@vitest/coverage-v8": "^5.0.1",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "lucide-react": "^0.544.0",
+    "openapi-fetch": "^0.14.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^7.18.4",
+    "tailwind-merge": "^3.3.1",
+    "zustand": "^5.0.8"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.36.0",
+    "@playwright/test": "^1.55.0",
+    "@tailwindcss/vite": "^4.1.13",
+    "@types/node": "^24.5.2",
+    "@types/react": "^18.3.24",
+    "@types/react-dom": "^18.3.7",
+    "@vitejs/plugin-react": "^5.0.3",
+    "eslint": "^9.36.0",
+    "eslint-plugin-react-hooks": "^5.2.0",
+    "eslint-plugin-react-refresh": "^0.4.20",
+    "jsdom": "^26.1.0",
+    "lighthouse": "^13.5.0",
+    "openapi-typescript": "^7.9.1",
+    "tailwindcss": "^4.1.13",
+    "typescript": "^5.9.2",
+    "typescript-eslint": "^8.44.0",
+    "vite": "^7.1.7",
+    "vitest": "^5.0.1"
+  }
+}

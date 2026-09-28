@@ -1,0 +1,48 @@
+- name: pgBackRest
+  ansible.builtin.apt: {name: pgbackrest, state: present}
+- name: Конфигурация (репозиторий MinIO, шифрование, retention)
+  ansible.builtin.template: {src: ../../../postgres/pgbackrest.conf.j2, dest: /etc/pgbackrest/pgbackrest.conf, owner: postgres, mode: "0600"}
+- name: Stanza (только на лидере — через REST Patroni)
+  ansible.builtin.shell: |
+    set -e
+    curl -sfk https://127.0.0.1:8008/primary >/dev/null || exit 0
+    sudo -u postgres pgbackrest --stanza={{ pgbackrest_stanza }} stanza-create
+  args: {creates: "/var/lib/pgbackrest/{{ pgbackrest_stanza }}.stanza"}
+- name: Таймеры бэкапов (full 01:00 ежедневно, diff каждые 6 ч; выполняет только primary/async — pgbackrest сам выбирает standby)
+  ansible.builtin.copy:
+    dest: "/etc/systemd/system/{{ item.name }}"
+    content: "{{ item.content }}"
+  loop:
+    - name: pgbackrest-full.service
+      content: |
+        [Service]
+        Type=oneshot
+        User=postgres
+        ExecCondition=/usr/bin/curl -sfk https://127.0.0.1:8008/primary
+        ExecStart=/usr/bin/pgbackrest --stanza={{ pgbackrest_stanza }} --type=full backup
+    - name: pgbackrest-full.timer
+      content: |
+        [Timer]
+        OnCalendar=*-*-* 01:00:00
+        RandomizedDelaySec=600
+        Persistent=true
+        [Install]
+        WantedBy=timers.target
+    - name: pgbackrest-diff.service
+      content: |
+        [Service]
+        Type=oneshot
+        User=postgres
+        ExecCondition=/usr/bin/curl -sfk https://127.0.0.1:8008/primary
+        ExecStart=/usr/bin/pgbackrest --stanza={{ pgbackrest_stanza }} --type=diff backup
+    - name: pgbackrest-diff.timer
+      content: |
+        [Timer]
+        OnCalendar=*-*-* 07,13,19:00:00
+        Persistent=true
+        [Install]
+        WantedBy=timers.target
+  notify: reload systemd
+- name: Включить таймеры
+  ansible.builtin.systemd: {name: "{{ item }}", enabled: true, state: started, daemon_reload: true}
+  loop: [pgbackrest-full.timer, pgbackrest-diff.timer]

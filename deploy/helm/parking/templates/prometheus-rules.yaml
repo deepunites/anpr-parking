@@ -1,0 +1,13 @@
+{{- if .Values.observability.prometheusRule.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: {{ include "parking.fullname" . }}-alerts
+  labels:
+    app.kubernetes.io/part-of: parking
+    {{- with .Values.observability.prometheusRule.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+{{ .Files.Get "rules/alerts.yaml" | replace "https://runbook.parking.local" .Values.observability.runbookBaseUrl | indent 2 }}
+{{- end }}

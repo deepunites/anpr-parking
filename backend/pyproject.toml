@@ -1,0 +1,142 @@
+[project]
+name = "parking"
+version = "0.1.0"
+description = "ANPR Parking Platform — backend"
+requires-python = ">=3.12"
+dependencies = [
+    "sqlalchemy[asyncio]>=2.0",
+    "asyncpg>=0.30",
+    "alembic>=1.14",
+    "pydantic[email]>=2.9",
+    "pydantic-settings>=2.6",
+    "structlog>=24",
+    "orjson>=3.10",
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+    "httpx>=0.27",
+    "argon2-cffi>=23",
+    "PyJWT[crypto]>=2.9",
+    "cryptography>=43",
+    "prometheus-client>=0.21",
+    "redis>=5.2",
+    "tenacity>=9",
+    "jsonschema>=4.23",
+    "celery>=5.4",
+    "aioboto3>=13",
+    "python-multipart>=0.0.20",
+    "opentelemetry-api>=1.27",
+    "opentelemetry-sdk>=1.27",
+    "opentelemetry-exporter-otlp-proto-http>=1.27",
+    "opentelemetry-instrumentation-fastapi>=0.65b0",
+    "opentelemetry-instrumentation-sqlalchemy>=0.65b0",
+    "opentelemetry-instrumentation-httpx>=0.65b0",
+    "opentelemetry-instrumentation-redis>=0.65b0",
+    "opentelemetry-instrumentation-celery>=0.65b0",
+    "sentry-sdk[fastapi]>=2.0",
+    "pyyaml>=6",
+    "defusedxml>=0.7.1",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+    "pytest-asyncio>=0.24",
+    "ruff>=0.8",
+    "mypy>=1.13",
+    "pgserver>=0.1.4",
+    "asyncpg-stubs>=0.30",
+    "hypothesis>=6.115",
+    "pytest-cov>=6",
+    "polyfactory>=2.18",
+    "types-jsonschema>=4.23",
+    "celery-types>=0.22",
+    "types-aiobotocore[s3]>=2",
+    "types-pyyaml>=6.0.12.20260906",
+    "mutmut>=3.8.0",
+    "bandit>=1.9.4",
+    "pip-audit>=2.10.1",
+    "types-defusedxml>=0.7.0.20260504",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/parking"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 120
+src = ["src", "tests", "alembic", "scripts"]
+extend-exclude = ["mutants"]  # сгенерированные mutmut копии src (не в git; .gitignore без репозитория ruff не читает)
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "ASYNC", "S", "N", "RUF", "PL", "T20"]
+ignore = ["PLR2004", "S101", "RUF001", "RUF002", "RUF003", "PLR0913", "PLR0917"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S", "PLR0913", "PLR0917", "T20", "E501", "PLC0415"]
+"scripts/**" = ["T20", "S603", "S607", "E501", "PLC0415", "S103"]
+"alembic/**" = ["E501", "PLR0912"]
+"src/parking/modules/*/infrastructure/*.py" = ["E501", "S608"]  # многострочный SQL; f-строки только с константами колонок (ADR-10)
+"src/parking/modules/*/infrastructure/**/*.py" = ["E501", "S608"]
+"src/parking/platform/events_registry.py" = ["E501"]  # описания контрактов
+"src/parking/workers/*.py" = ["E501"]  # многострочный SQL
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_unreachable = true
+plugins = ["pydantic.mypy"]
+files = ["src"]
+
+[[tool.mypy.overrides]]
+module = ["aioboto3", "aioboto3.*"]
+ignore_missing_imports = true  # aioboto3 без py.typed; клиент s3 типизируется через types-aiobotocore[s3]
+
+[tool.coverage.run]
+# SQLAlchemy asyncio исполняет код после первого await session.* внутри greenlet — без greenlet-трассировки
+# coverage «не видит» до половины строк сервисов (фаза 8 §1)
+concurrency = ["thread", "greenlet"]
+source = ["parking"]
+branch = false
+omit = ["*/__main__.py"]
+
+[tool.coverage.report]
+skip_covered = false
+show_missing = true
+precision = 1
+exclude_also = ["if TYPE_CHECKING:", "\\.\\.\\.$", "raise NotImplementedError", "@overload"]
+
+[tool.mutmut]
+# Mutation testing денежной логики (фаза 8 §1): только чистые домены tariff/billing и быстрые pure-тесты.
+source_paths = ["src"]
+only_mutate = ["src/parking/modules/tariff/domain/*", "src/parking/modules/billing/domain/*"]
+do_not_mutate = ["src/parking/modules/*/domain/__init__.py"]
+pytest_add_cli_args_test_selection = [
+    "tests/tariff/test_engine.py",
+    "tests/tariff/test_engine_contract.py",
+    "tests/billing/test_domain.py",
+    "tests/shared/test_money.py",
+]
+pytest_add_cli_args = ["-p", "no:cacheprovider", "-q", "-x"]
+use_git_change_detection = false
+track_dependencies = false
+timeout_multiplier = 10.0
+timeout_constant = 5.0
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+testpaths = ["tests"]
+# failure-тесты останавливают PostgreSQL/Redis и живут в отдельной лаборатории, e2e поднимают стенд —
+# только явным запуском: uv run pytest tests/failure -m failure; uv run pytest tests/e2e -m e2e
+addopts = "-m 'not failure and not e2e'"
+markers = [
+    "failure: сценарии отказов (§5 фазы 8), отдельная CI-джоба, лаборатория tests/failure/lab.py",
+    "e2e: сквозные сценарии на поднятом стенде (backend/scripts/e2e_stack.py)",
+    "load: обёртки над k6 (фаза 8 §6)",
+    "slow: длительные статистические тесты (тайминг ключей)",
+    "pooler: RLS под PgBouncer transaction pooling (лаборатория deploy/postgres/lab)",
+]

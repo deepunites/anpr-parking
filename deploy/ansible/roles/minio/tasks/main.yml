@@ -1,0 +1,29 @@
+- name: MinIO (отдельный сервер, отдельный от кластера PostgreSQL; репозиторий бэкапов — свой бакет с версионированием)
+  ansible.builtin.get_url: {url: "https://dl.min.io/server/minio/release/linux-amd64/minio", dest: /usr/local/bin/minio, mode: "0755", checksum: "sha256:{{ minio_sha256 }}"}
+- name: mc
+  ansible.builtin.get_url: {url: "https://dl.min.io/client/mc/release/linux-amd64/mc", dest: /usr/local/bin/mc, mode: "0755", checksum: "sha256:{{ mc_sha256 }}"}
+- name: systemd minio (данные /srv/minio, TLS)
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/minio.service
+    content: |
+      [Unit]
+      Description=MinIO
+      [Service]
+      User=minio
+      Environment=MINIO_ROOT_USER={{ minio_root_user }} MINIO_ROOT_PASSWORD={{ minio_root_password }} MINIO_KMS_KES_ENDPOINT={{ kes_endpoint }}
+      ExecStart=/usr/local/bin/minio server /srv/minio --console-address :9001 --certs-dir /etc/minio/certs
+      Restart=always
+      [Install]
+      WantedBy=multi-user.target
+  notify: restart minio
+- name: Бакеты и политики (версионирование обязательно; media — ILM из фазы 4; pg-backups — object lock, реплика во второй MinIO)
+  ansible.builtin.shell: |
+    set -e
+    mc alias set local https://127.0.0.1:9000 {{ minio_root_user }} {{ minio_root_password }}
+    mc mb --ignore-existing --with-lock local/pg-backups
+    mc version enable local/pg-backups
+    mc mb --ignore-existing local/parking-media
+    mc version enable local/parking-media
+    mc replicate add local/pg-backups --remote-bucket {{ minio_replica_target }} --replicate "delete,delete-marker,existing-objects" || true
+    mc replicate add local/parking-media --remote-bucket {{ minio_media_replica_target }} --replicate "delete,delete-marker,existing-objects" || true
+  run_once: true

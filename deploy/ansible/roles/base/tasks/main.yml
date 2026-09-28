@@ -1,0 +1,7 @@
+- name: Базовая ВМ (cloud-init уже применил ssh-ключи и сеть из Terraform)
+  ansible.builtin.apt: {name: [chrony, unattended-upgrades, curl, ca-certificates], state: present, update_cache: true}
+- name: Часы (event_time камер и PITR требуют синхронного времени)
+  ansible.builtin.systemd: {name: chrony, enabled: true, state: started}
+- name: CA внутреннего PKI (step-ca/Vault PKI) для TLS PostgreSQL/etcd/Patroni
+  ansible.builtin.copy: {content: "{{ lookup('community.hashi_vault.hashi_vault', 'pki/cert/ca:certificate') }}", dest: /usr/local/share/ca-certificates/parking-ca.crt, mode: "0644"}
+  notify: update ca

@@ -1,0 +1,77 @@
+
+
+  █ THRESHOLDS 
+
+    events_failed
+    ✓ 'count==0' count=0
+
+    http_req_duration{name:camera_events}
+    ✗ 'p(95)<150' p(95)=688.21ms
+    ✗ 'p(99)<400' p(99)=1.17s
+
+    http_req_duration{name:heartbeat}
+    ✗ 'p(95)<150' p(95)=207.21ms
+
+    http_req_failed{name:camera_events}
+    ✓ 'rate<0.001' rate=0.00%
+
+    http_req_failed{name:heartbeat}
+    ✓ 'rate<0.001' rate=0.00%
+
+    http_req_failed{name:operator_api}
+    ✓ 'rate<0.001' rate=0.00%
+
+
+  █ TOTAL RESULTS 
+
+    checks_total.......: 3618    26.151279/s
+    checks_succeeded...: 100.00% 3618 out of 3618
+    checks_failed......: 0.00%   0 out of 3618
+
+    ✓ heartbeat 204
+    ✓ camera event 2xx
+    ✓ occupancy 200
+    ✓ sessions 200
+    ✓ ws 101
+
+    CUSTOM
+    entry_latency..................: avg=249.17ms med=159.3ms  p(95)=710.21ms p(99)=1.27s    max=1.8s     count=400 
+    events_accepted................: 721    5.211463/s
+    events_duplicate...............: 33     0.238527/s
+    events_failed..................: 0      0/s
+    exit_latency...................: avg=211.34ms med=149.93ms p(95)=601.62ms p(99)=1.05s    max=1.27s    count=321 
+    exits_requested................: 321    2.320221/s
+
+    HTTP
+    http_req_duration..............: avg=123.24ms med=55.69ms  p(95)=470.58ms p(99)=1.03s    max=1.8s     count=3568
+      { expected_response:true }...: avg=123.24ms med=55.69ms  p(95)=470.58ms p(99)=1.03s    max=1.8s     count=3568
+      { name:camera_events }.......: avg=232.33ms med=155.21ms p(95)=688.21ms p(99)=1.17s    max=1.8s     count=721 
+      { name:heartbeat }...........: avg=62.85ms  med=34.22ms  p(95)=207.21ms p(99)=441.9ms  max=1.17s    count=2395
+    http_req_failed................: 0.00%  0 out of 3568
+      { name:camera_events }.......: 0.00%  0 out of 721
+      { name:heartbeat }...........: 0.00%  0 out of 2395
+      { name:operator_api }........: 0.00%  0 out of 452
+    http_reqs......................: 3568   25.789874/s
+
+    EXECUTION
+    dropped_iterations.............: 6      0.043369/s
+    iteration_duration.............: avg=515.01ms med=49.37ms  p(95)=453.96ms p(99)=25.18s   max=30.84s   count=3166
+    iterations.....................: 3166   22.884177/s
+    vus............................: 1      min=1         max=27
+    vus_max........................: 40     min=36        max=40
+
+    NETWORK
+    data_received..................: 20 MB  141 kB/s
+    data_sent......................: 1.3 MB 9.0 kB/s
+
+    WEBSOCKET
+    ws_connecting..................: avg=32.37ms  med=11ms     p(95)=180.35ms p(99)=185.96ms max=190.99ms count=50  
+    ws_messages....................: 37425  270.511784/s
+    ws_msgs_received...............: 37425  270.511784/s
+    ws_msgs_sent...................: 50     0.361405/s
+    ws_session_duration............: avg=25.2s    med=25.37s   p(95)=29.45s   p(99)=29.73s   max=29.84s   count=50  
+    ws_sessions....................: 50     0.361405/s
+
+
+
+time="2026-09-21T02:34:13+05:00" level=error msg="thresholds on metrics 'http_req_duration{name:camera_events}, http_req_duration{name:heartbeat}' have been crossed"

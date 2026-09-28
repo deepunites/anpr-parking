@@ -1,0 +1,52 @@
+# sandbox (kind/k3s на рабочей станции, 2 vCPU): минимум реплик, секреты inline (передаются --set-file, в git нет),
+# без ESO/cert-manager/prometheus-operator; anti-affinity по узлам отключать нельзя — на одном узле ставим replicas=1.
+env: sandbox
+domain: parking.localtest.me
+image:
+  registry: localhost
+  tag: 0.9.0-sandbox
+  pullPolicy: Never
+ingress:
+  enabled: true
+  className: traefik
+  annotations: {}
+  tls: false
+secrets:
+  external: {enabled: false}
+  inline:
+    enabled: true
+    data: {}          # --set-file secrets.inline.data.PARKING_...=... или --values secrets.local.yaml (gitignored)
+config:
+  logLevel: WARNING
+  keysSource: env
+  caConfigMap: ""
+  otlpEndpoint: ""
+  barrierDispatch: inline
+  redisSocketTimeoutSeconds: "1.0"
+api:
+  replicas: 1
+  hpa: {enabled: false}
+  pdb: {maxUnavailable: 1}
+  resources: {requests: {cpu: 100m, memory: 256Mi}, limits: {cpu: "1", memory: 512Mi}}
+publisher: {replicas: 1, pdb: {maxUnavailable: 1}, resources: {requests: {cpu: 50m, memory: 128Mi}, limits: {cpu: 500m, memory: 256Mi}}}
+consumer: {replicas: 1, pdb: {maxUnavailable: 1}, resources: {requests: {cpu: 50m, memory: 128Mi}, limits: {cpu: "1", memory: 384Mi}}}
+replayer: {replicas: 1, resources: {requests: {cpu: 50m, memory: 128Mi}, limits: {cpu: 250m, memory: 256Mi}}}
+cameraHealth: {replicas: 1, resources: {requests: {cpu: 20m, memory: 96Mi}, limits: {cpu: 250m, memory: 256Mi}}}
+webhooks: {replicas: 1, resources: {requests: {cpu: 20m, memory: 96Mi}, limits: {cpu: 250m, memory: 256Mi}}}
+celery:
+  pools:
+    exit: {queues: "saga,barrier,payments,maintenance", replicas: 1, concurrency: 1, terminationGracePeriodSeconds: 60, resources: {requests: {cpu: 50m, memory: 128Mi}, limits: {cpu: 500m, memory: 384Mi}}}
+  beat: {replicas: 1, resources: {requests: {cpu: 20m, memory: 96Mi}, limits: {cpu: 250m, memory: 192Mi}}}
+frontend: {replicas: 1, pdb: {maxUnavailable: 1}}
+networkPolicy:
+  enabled: true
+  ingressNamespace: kube-system        # traefik k3s
+  monitoringNamespace: observability
+  postgres: {cidrs: ["10.42.0.0/16", "10.43.0.0/16", "192.168.0.0/16", "10.0.0.0/8"], ports: [5432, 5500, 6432]}
+  redis: {cidrs: ["10.42.0.0/16", "10.43.0.0/16", "192.168.0.0/16", "10.0.0.0/8"], ports: [6379]}
+  minio: {cidrs: ["10.42.0.0/16", "10.43.0.0/16", "192.168.0.0/16", "10.0.0.0/8"], port: 9000}
+  barriers: {cidrs: ["10.42.0.0/16", "192.168.0.0/16", "10.0.0.0/8"], ports: [80, 443, 502, 8099]}
+observability:
+  prometheusRule: {enabled: false}
+  grafanaDashboards: {enabled: false}
+  serviceMonitor: {enabled: false}

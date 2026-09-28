@@ -1,0 +1,202 @@
+# Локальный запуск всей системы одной командой — START.bat (Windows) или:
+#   docker compose -f deploy/local/compose.yml up -d --build
+# Состав повторяет Helm-чарт (deploy/helm/parking): API, publisher, consumer, replayer, camera-health, Celery worker
+# и beat, веб (nginx: SPA + прокси /api и /ws). Отличия от production: PARKING_ENV=dev без Vault (ключи — в томе
+# state), один экземпляр каждого процесса, retention.sql по часам вместо планировщика кластера.
+# Наружу открыт только веб (порт 8080): PostgreSQL, Redis и MinIO доступны лишь внутри сети compose.
+name: anpr-parking
+
+x-backend: &backend
+  image: anpr-parking/backend:local
+  restart: unless-stopped
+  entrypoint: ["python", "/stand/entry.py"]
+  environment:
+    STAND_HTTP_PORT: ${PARKING_HTTP_PORT:-8080}
+  volumes:
+    - ./stand:/stand:ro
+    - state:/state:ro
+  depends_on:
+    init:
+      condition: service_completed_successfully
+
+services:
+  # 1. Секреты стенда (один раз): ключи номеров, KEK, JWT, пароли БД и MinIO → том state
+  keys:
+    image: anpr-parking/backend:local
+    build:
+      context: ../../backend
+    user: "0:0"
+    entrypoint: ["python", "/stand/keys.py"]
+    volumes:
+      - ./stand:/stand:ro
+      - state:/state
+    restart: "no"
+
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    command: ["postgres", "-c", "max_connections=200", "-c", "shared_buffers=128MB"]
+    environment:
+      POSTGRES_PASSWORD_FILE: /state/pg_password
+      POSTGRES_DB: parking
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - state:/state:ro
+    depends_on:
+      keys:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d parking"]
+      interval: 5s
+      timeout: 5s
+      retries: 60
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  # фото с камер (Hikvision/Dahua присылают кадр вместе с номером)
+  minio:
+    image: ${MINIO_IMAGE:-minio/minio:latest}
+    restart: unless-stopped
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >-
+        export MINIO_ROOT_USER="$$(cat /state/minio_user)" MINIO_ROOT_PASSWORD="$$(cat /state/minio_password)"
+        && exec minio server /data
+    volumes:
+      - miniodata:/data
+      - state:/state:ro
+    depends_on:
+      keys:
+        condition: service_completed_successfully
+
+  # имитатор сетевого Modbus-реле со шлагбаумом: демо-шлагбаум «ТЦ Mega, въезд 1» открывается им; страница
+  # состояния стрелы — http://localhost:8098 (только с этого компьютера). Настоящее реле добавляется в «Устройствах».
+  relay-sim:
+    image: anpr-parking/backend:local
+    restart: unless-stopped
+    entrypoint: ["python", "/seed/fake_modbus_relay.py", "--port", "1502", "--http-port", "8098"]
+    volumes:
+      - ../../backend/scripts:/seed:ro
+    ports:
+      - "127.0.0.1:${PARKING_RELAY_SIM_PORT:-8098}:8098"
+
+  # 2. База: миграции, демо-данные, пароли, ключи камер, бакет (при каждом запуске, идемпотентно)
+  init:
+    image: anpr-parking/backend:local
+    user: "0:0"
+    entrypoint: ["python", "/stand/bootstrap.py"]
+    environment:
+      STAND_HTTP_PORT: ${PARKING_HTTP_PORT:-8080}
+      STAND_DEMO_WEEK: ${STAND_DEMO_WEEK:-1}  # v2 этап 7: неделя демо-трафика для «Сводки» при первом запуске
+    volumes:
+      - ./stand:/stand:ro
+      - ../../backend/scripts:/seed:ro
+      - state:/state
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_started
+      relay-sim:
+        condition: service_started
+    restart: "no"
+
+  # 3. Приложение
+  api:
+    <<: *backend
+    command:
+      - uvicorn
+      - parking.api.main:app
+      - --host=0.0.0.0
+      - --port=8000
+      - --workers=1
+      - --timeout-keep-alive=75
+      - --no-server-header
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/ready', timeout=3)"]
+      interval: 5s
+      timeout: 5s
+      retries: 60
+
+  publisher:
+    <<: *backend
+    command: ["python", "-c", "from parking.workers.runtime import main_publisher; main_publisher()"]
+
+  consumer:
+    <<: *backend
+    command: ["python", "-c", "from parking.workers.runtime import main_consumer; main_consumer()"]
+
+  replayer:
+    <<: *backend
+    command: ["python", "-c", "from parking.workers.runtime import main_offline_replayer; main_offline_replayer()"]
+
+  webhooks:
+    <<: *backend
+    command: ["python", "-c", "from parking.workers.runtime import main_webhooks; main_webhooks()"]
+
+  camera-health:
+    <<: *backend
+    command: ["python", "-c", "from parking.workers.runtime import main_camera_health; main_camera_health()"]
+
+  celery-worker:
+    <<: *backend
+    command:
+      - celery
+      - -A
+      - parking.workers.celery_app
+      - worker
+      - --pool=solo
+      - -Q
+      - saga,barrier,maintenance,payments
+      - --loglevel=WARNING
+      - --without-gossip
+      - --without-mingle
+
+  celery-beat:
+    <<: *backend
+    command:
+      - celery
+      - -A
+      - parking.workers.celery_app
+      - beat
+      - --loglevel=WARNING
+      - --schedule=/tmp/celerybeat-schedule
+      - --pidfile=/tmp/celerybeat.pid
+
+  # партиции вперёд и ретеншен (backend/scripts/retention.sql) раз в час
+  maintenance:
+    <<: *backend
+    entrypoint: ["python", "/stand/retention.py"]
+    volumes:
+      - ./stand:/stand:ro
+      - ../../backend/scripts:/seed:ro
+      - state:/state:ro
+
+  web:
+    image: anpr-parking/frontend:local
+    build:
+      context: ../../frontend
+    restart: unless-stopped
+    ports:
+      - "${PARKING_HTTP_PORT:-8080}:8080"
+    depends_on:
+      api:
+        condition: service_healthy
+
+volumes:
+  pgdata:
+  redisdata:
+  miniodata:
+  state:
