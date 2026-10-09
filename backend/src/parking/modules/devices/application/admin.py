@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import timedelta
@@ -17,6 +18,7 @@ from parking.modules.devices.application.ports import (
     CameraAuthCache,
     CameraKeyRepository,
     CameraRepository,
+    CredentialBox,
     DriverRegistry,
     DriverResult,
     EndpointResolver,
@@ -91,6 +93,8 @@ class CreateBarrierCommand:
     camera_id: UUID | None = None
     auth_secret_ref: str | None = None
     auto_close_seconds: int | None = None
+    username: str | None = None  # HIKVISION_ISAPI: логин камеры (пароль не возвращается API)
+    password: str | None = None
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -101,6 +105,8 @@ class UpdateBarrierCommand:
     auth_secret_ref: str | None = None
     auto_close_seconds: int | None = None
     active: bool | None = None
+    username: str | None = None  # новые логин и пароль камеры — меняются только парой
+    password: str | None = None
 
 
 class DeviceAdminService:
@@ -115,8 +121,10 @@ class DeviceAdminService:
         clock: Clock,
         gate: SubscriptionGate | None = None,
         drivers: DriverRegistry | None = None,
+        box: CredentialBox | None = None,
     ) -> None:
         self._drivers = drivers  # v2: проверка связи со шлагбаумом из «Устройств»
+        self._box = box  # логины контроллеров (HIKVISION_ISAPI) шифруются ключом клиента
         self._uow_factory = uow_factory
         self._repos = repos
         self._resolver = resolver
@@ -305,10 +313,23 @@ class DeviceAdminService:
         async with self._uow_factory(actor.tenant_id) as uow:
             return await self._barrier(uow, actor, barrier_id)
 
+    def _seal_credentials(
+        self, tenant_id: UUID, barrier_id: UUID, username: str | None, password: str | None
+    ) -> bytes | None:
+        if username is None and password is None:
+            return None
+        if not username or not username.strip() or not password:
+            raise ValidationError("camera login and password are both required", code="CREDENTIALS_REQUIRED")
+        if self._box is None:
+            raise ValidationError("controller credentials are not supported here")
+        secret = json.dumps({"username": username.strip(), "password": password}).encode()
+        return self._box.seal(tenant_id, f"barrier:{barrier_id}", secret)
+
     async def create_barrier(self, actor: CurrentUser, cmd: CreateBarrierCommand, *, reason: str) -> Barrier:
         self._check_lot(actor, cmd.lot_id)
+        barrier_id = uuid4()
         barrier = Barrier(
-            id=uuid4(),
+            id=barrier_id,
             tenant_id=actor.tenant_id,
             lot_id=cmd.lot_id,
             name=cmd.name,
@@ -317,6 +338,7 @@ class DeviceAdminService:
             camera_id=cmd.camera_id,
             auth_secret_ref=cmd.auth_secret_ref,
             auto_close_seconds=cmd.auto_close_seconds,
+            credentials_encrypted=self._seal_credentials(actor.tenant_id, barrier_id, cmd.username, cmd.password),
         )
         async with self._uow_factory(actor.tenant_id) as uow:
             repos = self._repos(uow)
@@ -341,6 +363,7 @@ class DeviceAdminService:
                 auth_secret_ref=cmd.auth_secret_ref,
                 auto_close_seconds=cmd.auto_close_seconds,
                 active=cmd.active,
+                credentials_encrypted=self._seal_credentials(actor.tenant_id, barrier.id, cmd.username, cmd.password),
             )
             if cmd.endpoint is not None:
                 lot = await repos.lots.get(barrier.lot_id)

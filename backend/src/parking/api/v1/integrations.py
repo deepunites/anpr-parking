@@ -429,7 +429,12 @@ async def _principal(container: Container, user: CurrentUser, camera_id: UUID) -
 def _sandbox_input(body: SandboxRequest, principal: CameraPrincipal, now: datetime) -> CameraEventInput:
     if body.vendor == "hikvision":
         return hikvision_input(
-            _parse_xml(body.payload.encode()), code=principal.code, event_type=None, now=now, image_key=None
+            _parse_xml(body.payload.encode()),
+            code=principal.code,
+            event_type=None,
+            now=now,
+            image_key=None,
+            camera_direction=principal.direction,
         )
     try:
         data: dict[str, Any] = json.loads(body.payload)

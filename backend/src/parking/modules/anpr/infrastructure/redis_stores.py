@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import json
 import math
 import time
@@ -196,6 +197,11 @@ class RedisBarrierInfoCache:
             "camera_id": str(barrier.camera_id),
             "name": barrier.name,
             "allowlist": list(barrier.allowlist),
+            "tenant_id": str(barrier.tenant_id) if barrier.tenant_id else None,
+            # зашифрованы ключом клиента — в Redis так же нечитаемы, как в БД
+            "credentials": base64.b64encode(barrier.credentials_encrypted).decode()
+            if barrier.credentials_encrypted
+            else None,
         }
         await self._r.set(
             f"{_BARRIER_PREFIX}{barrier.lot_id}:{barrier.camera_id}", json.dumps(payload), ex=7 * 24 * 3600
@@ -216,4 +222,6 @@ class RedisBarrierInfoCache:
             camera_id=UUID(d["camera_id"]),
             name=d["name"],
             allowlist=tuple(d["allowlist"]),
+            tenant_id=UUID(d["tenant_id"]) if d.get("tenant_id") else None,
+            credentials_encrypted=base64.b64decode(d["credentials"]) if d.get("credentials") else None,
         )

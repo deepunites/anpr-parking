@@ -1,8 +1,8 @@
-# Gate v2 (этап 8 «Приёмка») — 2026-09-28T15:03Z, рабочая станция без root/Docker (PostgreSQL 16 pgserver, Redis 7, MinIO; helm/promtool/gitleaks в ~/.local)
+# Gate v2 (этап 8 «Приёмка») — 2026-10-09T08:43Z, рабочая станция без root/Docker (PostgreSQL 16 pgserver, Redis 7, MinIO; helm/promtool/gitleaks в ~/.local)
 
 $ bash -c uv run ruff check . && uv run ruff format --check .
 All checks passed!
-423 files already formatted
+427 files already formatted
 [OK] ruff
 
 $ uv run mypy src
@@ -18,12 +18,12 @@ written /home/deep/projects/anpr-parking/docs/RBAC.md
 [OK] rbac doc
 
 $ uv run pytest -q -p no:cacheprovider
-........................................................................ [ 47%]
-........................................................................ [ 59%]
-........................................................................ [ 71%]
-........................................................................ [ 83%]
-........................................................................ [ 95%]
-.........................                                                [100%]
+........................................................................ [ 46%]
+........................................................................ [ 58%]
+........................................................................ [ 69%]
+........................................................................ [ 81%]
+........................................................................ [ 93%]
+...........................................                              [100%]
 =============================== warnings summary ===============================
 tests/api/test_ws.py:16
   /home/deep/projects/anpr-parking/backend/tests/api/test_ws.py:16: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
@@ -42,7 +42,7 @@ tests/security/test_hardening.py::test_forged_jwt_variants_are_rejected
     return self._jws.encode(
 
 -- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
-599 passed, 2 skipped, 25 deselected, 4 warnings in 407.89s (0:06:47)
+617 passed, 2 skipped, 25 deselected, 4 warnings in 500.58s (0:08:20)
 [OK] pytest (весь набор)
 
 $ uv run python -
@@ -75,8 +75,8 @@ $ bash -c /home/deep/.local/tools/helm template t /home/deep/projects/anpr-parki
 [OK] helm template (sandbox)
 
 $ bash -c cd /home/deep/projects/anpr-parking && /home/deep/.local/tools/gitleaks dir --no-banner --config security/gitleaks.toml .
-[90m8:10PM[0m [32mINF[0m [1mscanned ~9258024 bytes (9.26 MB) in 2.8s[0m
-[90m8:10PM[0m [32mINF[0m [1mno leaks found[0m
+[90m1:52PM[0m [32mINF[0m [1mscanned ~16295238 bytes (16.30 MB) in 8.79s[0m
+[90m1:52PM[0m [32mINF[0m [1mno leaks found[0m
 [OK] gitleaks (всё дерево, конфиг security/gitleaks.toml)
 
 $ bash -c npm run -s gen:api >/dev/null && echo schema.d.ts regenerated
@@ -95,53 +95,71 @@ $ npx vitest run
 
  Test Files  7 passed (7)
       Tests  42 passed (42)
-   Start at  20:11:26
-   Duration  7.55s (environment 84%, transform 9%, import 4%, tests 2%, worker 1%)
+   Start at  13:53:24
+   Duration  11.17s (environment 87%, transform 7%, import 3%, tests 2%, worker 1%)
 
-Environment  jsdom was created 7 times · 5.07s total, 84% of tracked time
+Environment  jsdom was created 7 times · 7.99s total, 87% of tracked time
              create it once per worker with pool: 'vmThreads' (keeps per-file isolation) or isolate: false (shares it across files)
              learn more: https://vitest.dev/guide/improving-performance#test-environments
 
 [OK] frontend vitest
 
 $ npm run -s build
-dist/assets/SignupPage-B7RhIGI1.js            6.27 kB │ gzip:   2.36 kB │ map:    17.32 kB
-dist/assets/LotsPage-BJDEpM7y.js              7.97 kB │ gzip:   2.78 kB │ map:    22.79 kB
-dist/assets/VehiclesPage-BkAl5Id3.js         11.59 kB │ gzip:   4.11 kB │ map:    34.53 kB
-dist/assets/PlatformPage-1Dxb61qA.js         12.33 kB │ gzip:   4.12 kB │ map:    34.60 kB
-dist/assets/WelcomePage-CZLN8UJ1.js          14.04 kB │ gzip:   4.67 kB │ map:    38.92 kB
-dist/assets/UsersPage-Ctxes_9w.js            15.98 kB │ gzip:   5.12 kB │ map:    44.79 kB
-dist/assets/DevicesPage-DAwSD67s.js          18.94 kB │ gzip:   5.74 kB │ map:    54.76 kB
-dist/assets/MapPage-0tw7bPDj.js              29.82 kB │ gzip:   9.70 kB │ map:    93.19 kB
-dist/assets/IntegrationsPage-RzL88waX.js     32.36 kB │ gzip:   9.23 kB │ map:    85.79 kB
-dist/assets/index-BxeDEkvY.js               453.09 kB │ gzip: 143.46 kB │ map: 1,651.25 kB
+dist/assets/SignupPage-Cy3iOSLG.js            6.27 kB │ gzip:   2.36 kB │ map:    17.32 kB
+dist/assets/LotsPage-2lt2a_ZF.js              7.97 kB │ gzip:   2.78 kB │ map:    22.79 kB
+dist/assets/VehiclesPage-Da8DLHrV.js         11.59 kB │ gzip:   4.11 kB │ map:    34.53 kB
+dist/assets/PlatformPage-B8TgV6O7.js         12.33 kB │ gzip:   4.12 kB │ map:    34.60 kB
+dist/assets/WelcomePage-BuYCpzsA.js          14.04 kB │ gzip:   4.66 kB │ map:    38.92 kB
+dist/assets/UsersPage-CsZ81jnH.js            15.98 kB │ gzip:   5.12 kB │ map:    44.79 kB
+dist/assets/DevicesPage-BTHHS4aj.js          20.37 kB │ gzip:   6.13 kB │ map:    58.73 kB
+dist/assets/MapPage-CUrtu1dJ.js              29.82 kB │ gzip:   9.70 kB │ map:    93.19 kB
+dist/assets/IntegrationsPage-C67SEjyF.js     32.36 kB │ gzip:   9.23 kB │ map:    85.79 kB
+dist/assets/index-CCksKJVD.js               454.92 kB │ gzip: 144.06 kB │ map: 1,653.30 kB
 dist/assets/sentry-DDfJ79Hr.js              488.57 kB │ gzip: 162.81 kB │ map: 2,299.64 kB
-✓ built in 2m
+✓ built in 20.83s
 [OK] frontend build
 
 $ npx playwright test
 
 Running 16 tests using 1 worker
 
-  ✓   1 [chromium] › e2e/admin.spec.ts:6:1 › admin edits the lot and adds an employee who can log in (16.5s)
-  ✓   2 [chromium] › e2e/barrier.spec.ts:6:1 › probe and test-open a Modbus relay barrier (4.7s)
-  ✓   3 [chromium] › e2e/dashboard.spec.ts:24:1 › owner dashboard shows week figures and signals caused by real actions (5.1s)
-  ✓   4 [chromium] › e2e/dashboard.spec.ts:56:1 › platform owner sees clients, MRR, attention and health (2.2s)
-  ✓   5 [chromium] › e2e/flow.spec.ts:5:1 › operator flow: login → live → entry → plate correction → cash → exit (15.8s)
-  ✓   6 [chromium] › e2e/integrations.spec.ts:5:1 › webhook session.closed reaches the test inbox with a valid signature (12.5s)
-  ✓   7 [chromium] › e2e/integrations.spec.ts:45:1 › sandbox checks a Hikvision event and a rejected camera event shows its reason (7.2s)
-  ✓   8 [chromium] › e2e/integrations.spec.ts:79:1 › api key is shown once, works within its scopes and stops after revoke (7.2s)
-  ✓   9 [chromium] › e2e/map.spec.ts:6:1 › quick layout, live zone counter and editor (22.4s)
-  ✓  10 [chromium] › e2e/rbac.spec.ts:5:1 › viewer cannot open the barrier: no button and API 403 (6.0s)
-  ✓  11 [chromium] › e2e/security.spec.ts:4:1 › security headers and no inline scripts in the built app (1.8s)
-  ✓  12 [chromium] › e2e/signup.spec.ts:7:1 › self-signup, setup wizard, plan limit and cash payment by platform owner (18.5s)
-  ✓  13 [chromium] › e2e/staff.spec.ts:6:1 › invite an operator by link, he joins and logs in by phone (16.7s)
-  ✓  14 [chromium] › e2e/tenant-isolation.spec.ts:6:1 › tenant B sees nothing of tenant A (15.1s)
-  ✓  15 [chromium] › e2e/vehicles.spec.ts:6:1 › add a car with make and register a manual entry (12.6s)
+  ✓   1 [chromium] › e2e/admin.spec.ts:6:1 › admin edits the lot and adds an employee who can log in (23.3s)
+  ✓   2 [chromium] › e2e/barrier.spec.ts:6:1 › probe and test-open a Modbus relay barrier (10.0s)
+  ✓   3 [chromium] › e2e/dashboard.spec.ts:24:1 › owner dashboard shows week figures and signals caused by real actions (11.8s)
+  ✓   4 [chromium] › e2e/dashboard.spec.ts:56:1 › platform owner sees clients, MRR, attention and health (4.7s)
+  ✓   5 [chromium] › e2e/flow.spec.ts:5:1 › operator flow: login → live → entry → plate correction → cash → exit (13.5s)
+[WebServer] 13:56:21 [vite] ws proxy error:
+[WebServer] Error: read ECONNRESET
+[WebServer]     at TCP.onStreamRead (node:internal/stream_base_commons:216:20)
+[WebServer] 13:56:21 [vite] ws proxy socket error:
+[WebServer] Error: read ECONNRESET
+[WebServer]     at TCP.onStreamRead (node:internal/stream_base_commons:216:20)
+  ✓   6 [chromium] › e2e/integrations.spec.ts:5:1 › webhook session.closed reaches the test inbox with a valid signature (14.8s)
+  ✓   7 [chromium] › e2e/integrations.spec.ts:45:1 › sandbox checks a Hikvision event and a rejected camera event shows its reason (8.4s)
+  ✓   8 [chromium] › e2e/integrations.spec.ts:79:1 › api key is shown once, works within its scopes and stops after revoke (8.4s)
+[WebServer] 13:57:14 [vite] ws proxy error:
+[WebServer] Error: read ECONNRESET
+[WebServer]     at TCP.onStreamRead (node:internal/stream_base_commons:216:20)
+[WebServer] 13:57:14 [vite] ws proxy socket error:
+[WebServer] Error: read ECONNRESET
+[WebServer]     at TCP.onStreamRead (node:internal/stream_base_commons:216:20)
+  ✓   9 [chromium] › e2e/map.spec.ts:6:1 › quick layout, live zone counter and editor (20.4s)
+  ✓  10 [chromium] › e2e/rbac.spec.ts:5:1 › viewer cannot open the barrier: no button and API 403 (6.1s)
+  ✓  11 [chromium] › e2e/security.spec.ts:4:1 › security headers and no inline scripts in the built app (1.9s)
+  ✓  12 [chromium] › e2e/signup.spec.ts:7:1 › self-signup, setup wizard, plan limit and cash payment by platform owner (18.6s)
+  ✓  13 [chromium] › e2e/staff.spec.ts:6:1 › invite an operator by link, he joins and logs in by phone (18.5s)
+  ✓  14 [chromium] › e2e/tenant-isolation.spec.ts:6:1 › tenant B sees nothing of tenant A (15.8s)
+[WebServer] 13:58:27 [vite] ws proxy error:
+[WebServer] Error: read ECONNRESET
+[WebServer]     at TCP.onStreamRead (node:internal/stream_base_commons:216:20)
+[WebServer] 13:58:27 [vite] ws proxy socket error:
+[WebServer] Error: read ECONNRESET
+[WebServer]     at TCP.onStreamRead (node:internal/stream_base_commons:216:20)
+  ✓  15 [chromium] › e2e/vehicles.spec.ts:6:1 › add a car with make and register a manual entry (12.3s)
   ✓  16 [chromium] › e2e/ws-reconnect.spec.ts:5:1 › websocket drop shows stale indicator, reconnects and refetches state (5.5s)
 stopped
 
-  16 passed (3.6m)
+  16 passed (4.2m)
 [OK] E2E (Playwright, все спецификации)
 
 GATE v2: PASS

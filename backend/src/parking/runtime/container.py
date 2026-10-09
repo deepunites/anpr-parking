@@ -53,7 +53,12 @@ from parking.modules.devices.application.admin import AdminRepositories, DeviceA
 from parking.modules.devices.application.camera_auth import CameraAuthService
 from parking.modules.devices.application.commands import BarrierCommandExecutor, DeviceRepositories, SqlBarrierCommands
 from parking.modules.devices.application.health import CameraHealthJob
-from parking.modules.devices.infrastructure.drivers import DriverRegistry, HttpRestDriver, ModbusTcpDriver
+from parking.modules.devices.infrastructure.drivers import (
+    DriverRegistry,
+    HikvisionIsapiDriver,
+    HttpRestDriver,
+    ModbusTcpDriver,
+)
 from parking.modules.devices.infrastructure.endpoint_resolver import SystemEndpointResolver
 from parking.modules.devices.infrastructure.redis_store import RedisCameraAuthCache, RedisHeartbeatStore
 from parking.modules.devices.infrastructure.repositories import (
@@ -86,7 +91,6 @@ from parking.modules.integrations.infrastructure.repositories import (
     SqlJournalRepository,
     SqlWebhookRepository,
 )
-from parking.modules.integrations.infrastructure.secrets import TenantSecretBox
 from parking.modules.integrations.infrastructure.sender import HttpWebhookSender
 from parking.modules.media.application.service import MediaRepositories, MediaService
 from parking.modules.media.infrastructure.pending import RedisPendingFrames
@@ -134,6 +138,7 @@ from parking.platform.db.uow import UnitOfWork
 from parking.platform.http.vault_keys import VaultKeyProvider
 from parking.platform.logging import get_logger
 from parking.platform.redis import build_redis
+from parking.platform.secret_box import TenantSecretBox
 from parking.platform.secrets import JsonSecretProvider
 from parking.runtime.metrics_refresh import MetricsRefresher
 from parking.shared.clock import Clock, SystemClock
@@ -398,11 +403,15 @@ def build_container(settings: Settings, database: Database, *, clock: Clock | No
     occupancy = RedisOccupancy(redis)
     resolver = SystemEndpointResolver()
     secrets = JsonSecretProvider(settings.secrets_json.get_secret_value())
+    secret_box = TenantSecretBox(layered_keys)  # секреты клиента: подписи вебхуков, логины контроллеров шлагбаумов
     drivers = DriverRegistry(
         enabled=settings.barrier_drivers_enabled,
         drivers={
             "HTTP_REST": HttpRestDriver(resolver=resolver, secrets=secrets, timeout=settings.barrier_timeout_seconds),
             "MODBUS_TCP": ModbusTcpDriver(resolver=resolver, timeout=settings.barrier_timeout_seconds),
+            "HIKVISION_ISAPI": HikvisionIsapiDriver(
+                resolver=resolver, box=secret_box, timeout=settings.barrier_timeout_seconds
+            ),
         },
     )
     barrier_cache = RedisBarrierInfoCache(redis)
@@ -499,7 +508,7 @@ def build_container(settings: Settings, database: Database, *, clock: Clock | No
             webhooks=SqlWebhookRepository(uow.session), audit=SqlAuditWriter(uow.session)
         ),
         queue=SqlDeliveryQueue(database.session_factory(Pool.MAINTENANCE)),
-        box=TenantSecretBox(layered_keys),
+        box=secret_box,
         sender=webhook_sender,
         clock=clock,
         allow_http=settings.webhook_allow_http,
@@ -603,6 +612,7 @@ def build_container(settings: Settings, database: Database, *, clock: Clock | No
             clock=clock,
             gate=subscriptions,
             drivers=drivers,
+            box=secret_box,
         ),
         ingest=IngestService(
             uow_factory=uow_factory,

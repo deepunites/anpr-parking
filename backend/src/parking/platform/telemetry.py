@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
@@ -56,7 +57,28 @@ def instrument_app(app: Any) -> None:
     """Серверный спан на HTTP-запрос. Внутренние спаны `http send`/`http receive` на каждое ASGI-сообщение выключены:
     под нагрузкой они давали ≈7 % CPU процесса API (особенно на WebSocket-потоках), а в трассах не нужны —
     длительность ответа видна по серверному спану. Служебные и WS-маршруты не трассируются."""
-    FastAPIInstrumentor.instrument_app(app, excluded_urls="health,metrics,ws/", exclude_spans=["receive", "send"])
+    FastAPIInstrumentor.instrument_app(
+        app,
+        excluded_urls="health,metrics,ws/",
+        exclude_spans=["receive", "send"],
+        server_request_hook=redact_camera_key,
+    )
+
+
+_CAMERA_KEY_PATH = re.compile(r"(/api/v1/camera/vendor/[a-z]+/)[^/?#]+")
+
+
+def redact_camera_key(span: Any, scope: dict[str, Any]) -> None:
+    """Камеры Hikvision/Dahua не умеют свой заголовок — ключ приходит последним сегментом пути. В трассы он не
+    попадает: атрибуты пути/URL перезаписываются маской (журнал запросов и так пишет шаблон роута)."""
+    path = str(scope.get("path", ""))
+    if span is None or not _CAMERA_KEY_PATH.search(path):
+        return
+    masked = _CAMERA_KEY_PATH.sub(r"\1***", path)
+    for attribute in ("http.target", "url.path"):
+        span.set_attribute(attribute, masked)
+    for attribute in ("http.url", "url.full"):
+        span.set_attribute(attribute, masked)
 
 
 def instrument_database(database: Database) -> None:

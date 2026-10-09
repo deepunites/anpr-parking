@@ -34,7 +34,7 @@ RELAY_HTTP_PORT = 8098
 BARRIER_A1_IN = UUID("00000000-0000-4000-8000-00000000e101")
 LOT_A1 = UUID("00000000-0000-4000-8000-00000000a101")
 REDIS_URL = "redis://127.0.0.1:6390/2"
-WORKER_METRICS_PORTS = {"publisher": 9464, "consumer": 9465, "replayer": 9466, "webhooks": 9467}
+WORKER_METRICS_PORTS = {"publisher": 9464, "consumer": 9465, "replayer": 9466, "webhooks": 9467, "health": 9468}
 PASSWORD = "correct-horse-battery-staple"  # noqa: S105 — тестовый стенд, не секрет
 TENANT_A = UUID("00000000-0000-4000-8000-0000000000a1")
 TENANT_B = UUID("00000000-0000-4000-8000-0000000000b1")
@@ -363,6 +363,8 @@ def start() -> None:
         "consumer": "from parking.workers.runtime import main_consumer; main_consumer()",
         "replayer": "from parking.workers.runtime import main_offline_replayer; main_offline_replayer()",
         "webhooks": "from parking.workers.runtime import main_webhooks; main_webhooks()",
+        # heartbeat камеры → ONLINE/OFFLINE (в проде — celery beat camera-health)
+        "health": "from parking.workers.runtime import main_camera_health; main_camera_health()",
     }
     for name, entry in workers.items():
         _spawn(name, [python, "-c", entry], {**env, "PARKING_METRICS_PORT": str(WORKER_METRICS_PORTS[name])})
@@ -388,6 +390,7 @@ PATTERNS = (
     "from parking.workers.runtime import main_consumer",
     "from parking.workers.runtime import main_offline_replayer",
     "from parking.workers.runtime import main_webhooks",
+    "from parking.workers.runtime import main_camera_health",
 )
 
 

@@ -12,6 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from parking.api.errors import install_error_handlers
 from parking.api.middleware.correlation import CorrelationMiddleware
+from parking.api.middleware.eager_body import EagerBodyMiddleware
 from parking.api.middleware.limits import BodyLimitMiddleware
 from parking.api.middleware.request_log import RequestLogMiddleware
 from parking.api.v1 import (
@@ -75,6 +76,8 @@ def create_app(settings: Settings, *, database: Database | None = None) -> FastA
     app.state.settings = settings
     install_error_handlers(app)
     app.add_middleware(RequestLogMiddleware)
+    # внутри BodyLimit: лимит действует и на раннее чтение тела
+    app.add_middleware(EagerBodyMiddleware, prefixes=("/api/v1/camera/",))
     app.add_middleware(
         BodyLimitMiddleware,
         path_limits={

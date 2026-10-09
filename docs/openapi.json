@@ -332,7 +332,8 @@
       "BarrierDriverKind": {
         "enum": [
           "MODBUS_TCP",
-          "HTTP_REST"
+          "HTTP_REST",
+          "HIKVISION_ISAPI"
         ],
         "title": "BarrierDriverKind",
         "type": "string"
@@ -382,6 +383,12 @@
           "endpoint": {
             "title": "Endpoint",
             "type": "string"
+          },
+          "has_credentials": {
+            "default": false,
+            "description": "логин/пароль контроллера заданы (сами не возвращаются)",
+            "title": "Has Credentials",
+            "type": "boolean"
           },
           "id": {
             "title": "Id",
@@ -459,43 +466,6 @@
           "avg_latency_ms"
         ],
         "title": "BarrierReportOut",
-        "type": "object"
-      },
-      "Body_hikvision_event_api_v1_camera_vendor_hikvision_post": {
-        "properties": {
-          "anpr.xml": {
-            "contentMediaType": "application/octet-stream",
-            "title": "Anpr.Xml",
-            "type": "string"
-          },
-          "event_type": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Event Type"
-          },
-          "licensePlatePicture.jpg": {
-            "anyOf": [
-              {
-                "contentMediaType": "application/octet-stream",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Licenseplatepicture.Jpg"
-          }
-        },
-        "required": [
-          "anpr.xml"
-        ],
-        "title": "Body_hikvision_event_api_v1_camera_vendor_hikvision_post",
         "type": "object"
       },
       "BoundingBox": {
@@ -1302,12 +1272,38 @@
             "title": "Name",
             "type": "string"
           },
+          "password": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "HIKVISION_ISAPI: пароль камеры (не возвращается)",
+            "title": "Password"
+          },
           "reason": {
             "description": "Обязательное обоснование ручного действия (I-15)",
             "maxLength": 500,
             "minLength": 3,
             "title": "Reason",
             "type": "string"
+          },
+          "username": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "HIKVISION_ISAPI: логин камеры",
+            "title": "Username"
           }
         },
         "required": [
@@ -6724,12 +6720,37 @@
             ],
             "title": "Name"
           },
+          "password": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Password"
+          },
           "reason": {
             "description": "Обязательное обоснование ручного действия (I-15)",
             "maxLength": 500,
             "minLength": 3,
             "title": "Reason",
             "type": "string"
+          },
+          "username": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "новые логин и пароль — только парой",
+            "title": "Username"
           }
         },
         "required": [
@@ -9135,9 +9156,61 @@
         "x-public": true
       }
     },
+    "/api/v1/camera/vendor/dahua/{camera_key}": {
+      "post": {
+        "description": "Ключ камеры последним сегментом пути — для камер, которые не умеют свой заголовок.",
+        "operationId": "dahua_event_by_path_api_v1_camera_vendor_dahua__camera_key__post",
+        "parameters": [
+          {
+            "description": "ключ камеры (камеры без своего заголовка)",
+            "in": "path",
+            "name": "camera_key",
+            "required": true,
+            "schema": {
+              "description": "ключ камеры (камеры без своего заголовка)",
+              "maxLength": 200,
+              "minLength": 16,
+              "title": "Camera Key",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CameraEventResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "202": {
+            "description": "принято в оффлайн-буфер"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Dahua Event By Path",
+        "tags": [
+          "camera"
+        ],
+        "x-camera-auth": true,
+        "x-public": true
+      }
+    },
     "/api/v1/camera/vendor/hikvision": {
       "post": {
-        "description": "multipart/form-data: часть anpr.xml (EventNotificationAlert) + кадр jpg. Кадр API кладёт в MinIO сам.",
+        "description": "Ключ в заголовке X-Camera-Key. multipart/form-data: XML EventNotificationAlert (часть anpr.xml) + кадр jpg.",
         "operationId": "hikvision_event_api_v1_camera_vendor_hikvision_post",
         "parameters": [
           {
@@ -9157,16 +9230,6 @@
             }
           }
         ],
-        "requestBody": {
-          "content": {
-            "multipart/form-data": {
-              "schema": {
-                "$ref": "#/components/schemas/Body_hikvision_event_api_v1_camera_vendor_hikvision_post"
-              }
-            }
-          },
-          "required": true
-        },
         "responses": {
           "200": {
             "content": {
@@ -9193,6 +9256,58 @@
           }
         },
         "summary": "Hikvision Event",
+        "tags": [
+          "camera"
+        ],
+        "x-camera-auth": true,
+        "x-public": true
+      }
+    },
+    "/api/v1/camera/vendor/hikvision/{camera_key}": {
+      "post": {
+        "description": "Для настоящей камеры: в веб-интерфейсе Hikvision (Сеть → Расширенные → HTTP-прослушивание / «Хост\nуведомлений») задаётся адрес сервера и путь `/api/v1/camera/vendor/hikvision/<ключ камеры>` — свой заголовок\nкамера добавить не может. Служебные события (heartBeat и др.) и проезды без номера — 200 IGNORED.",
+        "operationId": "hikvision_event_by_path_api_v1_camera_vendor_hikvision__camera_key__post",
+        "parameters": [
+          {
+            "description": "ключ камеры (камеры без своего заголовка)",
+            "in": "path",
+            "name": "camera_key",
+            "required": true,
+            "schema": {
+              "description": "ключ камеры (камеры без своего заголовка)",
+              "maxLength": 200,
+              "minLength": 16,
+              "title": "Camera Key",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CameraEventResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "202": {
+            "description": "принято в оффлайн-буфер"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Hikvision Event By Path",
         "tags": [
           "camera"
         ],

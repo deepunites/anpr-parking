@@ -34,6 +34,7 @@ import { Dialog } from "@/components/ui/dialog";
 import { EmptyState } from "@/components/ui/empty";
 import { SkeletonRows } from "@/components/ui/skeleton";
 import { ErrorBox } from "@/components/ErrorBox";
+import { useReasonDialog } from "@/components/ReasonDialog";
 import { toast } from "@/components/ui/toast";
 import { Tabs } from "@/components/ui/tabs";
 
@@ -171,6 +172,7 @@ function cameraStatus(c: CameraOut, t: (k: string, o?: { defaultValue?: string }
 function CameraRow({ camera: c, timeZone, lang, canKeys, canWrite, onKeys }: { camera: CameraOut; timeZone?: string; lang: string; canKeys: boolean; canWrite: boolean; onKeys: () => void }) {
   const { t } = useTranslation();
   const update = useUpdateCamera();
+  const [reasonDialog, askReason] = useReasonDialog(update.isPending);
   const st = cameraStatus(c, t);
   return (
     <tr data-testid="camera-row" data-code={c.code}>
@@ -194,17 +196,21 @@ function CameraRow({ camera: c, timeZone, lang, canKeys, canWrite, onKeys }: { c
         )}
       </Td>
       <Td>
+        {reasonDialog}
         {canWrite && (
           <Button
             variant="ghost"
             size="sm"
             title={c.active ? t("devices.disable") : t("devices.enable")}
             aria-label={c.active ? t("devices.disable") : t("devices.enable")}
-            onClick={() => {
-              const reason = window.prompt(t("session.reason"));
-              if (!reason || reason.length < 3) return;
-              update.mutate({ cameraId: c.id, body: { active: !c.active, reason } }, { onSuccess: () => toast.ok(c.active ? t("devices.disabledToast") : t("devices.enabledToast")) });
-            }}
+            onClick={() =>
+              askReason({
+                title: `${c.active ? t("devices.disable") : t("devices.enable")} · ${c.name}`,
+                confirm: c.active ? t("devices.disable") : t("devices.enable"),
+                danger: c.active,
+                run: (reason) => update.mutate({ cameraId: c.id, body: { active: !c.active, reason } }, { onSuccess: () => toast.ok(c.active ? t("devices.disabledToast") : t("devices.enabledToast")) }),
+              })
+            }
           >
             <Power className="h-4 w-4" aria-hidden="true" />
           </Button>
@@ -219,6 +225,7 @@ function BarrierRow({ barrier: b, cameras, canOpen, canWrite }: { barrier: Barri
   const probe = useProbeBarrier();
   const testOpen = useTestOpenBarrier();
   const update = useUpdateBarrier();
+  const [reasonDialog, askReason] = useReasonDialog(update.isPending);
   const cam = cameras.find((c) => c.id === b.camera_id);
   const [result, setResult] = useState<{ ok: boolean; text: string } | null>(null);
   return (
@@ -231,7 +238,7 @@ function BarrierRow({ barrier: b, cameras, canOpen, canWrite }: { barrier: Barri
           </div>
         )}
       </Td>
-      <Td>{b.driver === "HTTP_REST" ? "HTTP REST" : "Modbus TCP"}</Td>
+      <Td>{DRIVER_LABEL[b.driver] ?? b.driver}</Td>
       <Td mono>{b.endpoint}</Td>
       <Td>{cam ? `${cam.name} · ${cam.code}` : "—"}</Td>
       <Td>
@@ -293,17 +300,21 @@ function BarrierRow({ barrier: b, cameras, canOpen, canWrite }: { barrier: Barri
               <Zap className="h-4 w-4" aria-hidden="true" /> {testOpen.isPending ? "…" : t("devices.test")}
             </Button>
           )}
+          {reasonDialog}
           {canWrite && (
             <Button
               variant="ghost"
               size="sm"
               aria-label={b.active ? t("devices.disable") : t("devices.enable")}
               title={b.active ? t("devices.disable") : t("devices.enable")}
-              onClick={() => {
-                const reason = window.prompt(t("session.reason"));
-                if (!reason || reason.length < 3) return;
-                update.mutate({ barrierId: b.id, body: { active: !b.active, reason } }, { onSuccess: () => toast.ok(b.active ? t("devices.disabledToast") : t("devices.enabledToast")) });
-              }}
+              onClick={() =>
+                askReason({
+                  title: `${b.active ? t("devices.disable") : t("devices.enable")} · ${b.name}`,
+                  confirm: b.active ? t("devices.disable") : t("devices.enable"),
+                  danger: b.active,
+                  run: (reason) => update.mutate({ barrierId: b.id, body: { active: !b.active, reason } }, { onSuccess: () => toast.ok(b.active ? t("devices.disabledToast") : t("devices.enabledToast")) }),
+                })
+              }
             >
               <Power className="h-4 w-4" aria-hidden="true" />
             </Button>
@@ -436,10 +447,16 @@ function IssuedKeyView({ issued, camera, onClose }: { issued: IssuedKeyOut; came
   const { t } = useTranslation();
   const [copied, setCopied] = useState(false);
   const origin = window.location.origin;
-  const path = camera.vendor === "GENERIC" ? "/api/v1/camera/events" : `/api/v1/camera/vendor/${camera.vendor.toLowerCase()}`;
-  const copy = async () => {
+  // Hikvision/Dahua в режиме «HTTP-хост» не умеют свой заголовок — ключ идёт последним сегментом адреса
+  const keyInPath = camera.vendor !== "GENERIC";
+  const path = keyInPath ? `/api/v1/camera/vendor/${camera.vendor.toLowerCase()}/${issued.key}` : "/api/v1/camera/events";
+  const server = new URL(origin);
+  const port = server.port || (server.protocol === "https:" ? "443" : "80");
+  // панель открыта как localhost — камера по такому адресу сервер не найдёт: нужен адрес компьютера в сети
+  const localOnly = /^(localhost|127\.|\[::1\])/.test(server.hostname);
+  const copy = async (text: string = issued.key) => {
     try {
-      await navigator.clipboard.writeText(issued.key);
+      await navigator.clipboard.writeText(text);
       setCopied(true);
       toast.ok(t("devices.copied"));
     } catch {
@@ -449,8 +466,14 @@ function IssuedKeyView({ issued, camera, onClose }: { issued: IssuedKeyOut; came
   const memo = () => {
     const text = [
       `${t("devices.memoTitle")}: ${camera.name} (${camera.code})`,
-      `${t("devices.memoServer")}: ${origin}${path}`,
-      `X-Camera-Key: ${issued.key}`,
+      ...(keyInPath
+        ? [
+            `${t("devices.memoHost")}: ${server.hostname}`,
+            `${t("devices.memoPort")}: ${port}${server.protocol === "https:" ? " (HTTPS)" : ""}`,
+            `URL: ${path}`,
+            t("devices.memoNoHeader"),
+          ]
+        : [`${t("devices.memoServer")}: ${origin}${path}`, `X-Camera-Key: ${issued.key}`]),
       `${t("devices.memoWhere")}: ${t(`devices.memo.${camera.vendor}`)}`,
     ].join("\n");
     const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
@@ -462,33 +485,55 @@ function IssuedKeyView({ issued, camera, onClose }: { issued: IssuedKeyOut; came
   };
   return (
     <div className="space-y-3" data-testid="issued-key">
-      <p className="text-[14px] font-semibold text-ink-2">{t("devices.keyIssuedHint")}</p>
+      <p className="text-[14px] font-semibold text-ink-2">{t(keyInPath ? "devices.keyIssuedHintPath" : "devices.keyIssuedHint")}</p>
       <div className="flex items-center gap-3 rounded-xl bg-ink px-4 py-3 font-mono text-[14px] font-bold text-[#c9f5da] break-all">
         <span>
           <span className="text-white">{issued.key_prefix}</span>
           {issued.key.slice(issued.key_prefix.length)}
         </span>
-        <Button variant="secondary" size="sm" className="ml-auto flex-none" onClick={() => void copy()} data-testid="copy-key">
+        <Button variant="secondary" size="sm" className="ml-auto flex-none" onClick={() => void copy(issued.key)} data-testid="copy-key">
           <Copy className="h-4 w-4" aria-hidden="true" /> {copied ? t("devices.copied") : t("error.copy")}
         </Button>
       </div>
-      <ol className="grid gap-2 text-[13px] font-semibold text-ink-2 sm:grid-cols-3">
-        <li className="rounded-xl bg-surface-2 p-3">
-          <b className="block text-ink">1 · {t("devices.memoServer")}</b>
-          <span className="font-mono text-[11.5px] break-all">
-            {origin}
-            {path}
-          </span>
-        </li>
-        <li className="rounded-xl bg-surface-2 p-3">
-          <b className="block text-ink">2 · {t("devices.memoHeader")}</b>
-          <span className="font-mono text-[11.5px]">X-Camera-Key</span>
-        </li>
-        <li className="rounded-xl bg-surface-2 p-3">
-          <b className="block text-ink">3 · {t("devices.memoWhere")}</b>
-          {t(`devices.memo.${camera.vendor}`)}
-        </li>
-      </ol>
+      {keyInPath ? (
+        <div className="space-y-2 text-[13px] font-semibold text-ink-2" data-testid="camera-push-target">
+          {localOnly && <p className="rounded-lg bg-warn-soft px-3 py-2 text-warn-ink">{t("devices.localhostWarn")}</p>}
+          <dl className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2 rounded-xl bg-surface-2 p-3">
+            <dt className="text-muted">{t("devices.memoHost")}</dt>
+            <dd className="font-mono text-ink">{server.hostname}</dd>
+            <span />
+            <dt className="text-muted">{t("devices.memoPort")}</dt>
+            <dd className="font-mono text-ink">{port}</dd>
+            <span />
+            <dt className="text-muted">{t("devices.memoUrl")}</dt>
+            <dd className="font-mono text-[11.5px] break-all text-ink" data-testid="camera-push-url">
+              {path}
+            </dd>
+            <Button variant="ghost" size="sm" onClick={() => void copy(path)} aria-label={t("error.copy")}>
+              <Copy className="h-4 w-4" aria-hidden="true" />
+            </Button>
+          </dl>
+          <p>{t(`devices.memo.${camera.vendor}`)}</p>
+        </div>
+      ) : (
+        <ol className="grid gap-2 text-[13px] font-semibold text-ink-2 sm:grid-cols-3">
+          <li className="rounded-xl bg-surface-2 p-3">
+            <b className="block text-ink">1 · {t("devices.memoServer")}</b>
+            <span className="font-mono text-[11.5px] break-all">
+              {origin}
+              {path}
+            </span>
+          </li>
+          <li className="rounded-xl bg-surface-2 p-3">
+            <b className="block text-ink">2 · {t("devices.memoHeader")}</b>
+            <span className="font-mono text-[11.5px]">X-Camera-Key</span>
+          </li>
+          <li className="rounded-xl bg-surface-2 p-3">
+            <b className="block text-ink">3 · {t("devices.memoWhere")}</b>
+            {t(`devices.memo.${camera.vendor}`)}
+          </li>
+        </ol>
+      )}
       <div className="flex flex-wrap gap-2">
         <Button variant="outline" onClick={memo} data-testid="download-memo">
           {t("devices.downloadMemo")}
@@ -506,8 +551,10 @@ function CameraKeys({ camera, timeZone, lang, onIssued }: { camera: CameraOut; t
   const keys = useCameraKeys(camera.id);
   const issue = useIssueCameraKey();
   const revoke = useRevokeCameraKey();
+  const [reasonDialog, askReason] = useReasonDialog(issue.isPending || revoke.isPending);
   return (
     <div className="space-y-3">
+      {reasonDialog}
       {keys.isPending && <SkeletonRows rows={2} />}
       {keys.isError && <ErrorBox error={keys.error} />}
       {keys.data && (
@@ -525,11 +572,13 @@ function CameraKeys({ camera, timeZone, lang, onIssued }: { camera: CameraOut; t
                   variant="outline"
                   size="sm"
                   className="ml-auto"
-                  onClick={() => {
-                    const reason = window.prompt(t("session.reason"));
-                    if (!reason || reason.length < 3) return;
-                    revoke.mutate({ keyId: k.id, reason }, { onSuccess: () => toast.ok(t("devices.revokedToast")) });
-                  }}
+                  onClick={() =>
+                    askReason({
+                      title: `${t("devices.revoke")} · ${k.key_prefix}…`,
+                      confirm: t("devices.revoke"),
+                      run: (reason) => revoke.mutate({ keyId: k.id, reason }, { onSuccess: () => toast.ok(t("devices.revokedToast")) }),
+                    })
+                  }
                 >
                   {t("devices.revoke")}
                 </Button>
@@ -541,11 +590,15 @@ function CameraKeys({ camera, timeZone, lang, onIssued }: { camera: CameraOut; t
       )}
       <Button
         disabled={issue.isPending}
-        onClick={() => {
-          const reason = window.prompt(t("session.reason"), t("devices.reissueReason"));
-          if (!reason || reason.length < 3) return;
-          issue.mutate({ cameraId: camera.id, label: null, reason }, { onSuccess: (k) => onIssued(k) });
-        }}
+        onClick={() =>
+          askReason({
+            title: `${t("devices.issueKey")} · ${camera.name}`,
+            confirm: t("devices.issueKey"),
+            danger: false,
+            defaultReason: t("devices.reissueReason"),
+            run: (reason) => issue.mutate({ cameraId: camera.id, label: null, reason }, { onSuccess: (k) => onIssued(k) }),
+          })
+        }
         data-testid="issue-key"
       >
         <KeyRound className="h-4 w-4" aria-hidden="true" /> {t("devices.issueKey")}
@@ -559,7 +612,9 @@ function BarrierForm({ lotId, cameras, onDone }: { lotId: string | null; cameras
   const { t } = useTranslation();
   const create = useCreateBarrier();
   const [name, setName] = useState("");
-  const [driver, setDriver] = useState<"HTTP_REST" | "MODBUS_TCP">("HTTP_REST");
+  const [driver, setDriver] = useState<Driver>("HIKVISION_ISAPI");
+  const [username, setUsername] = useState("admin");
+  const [password, setPassword] = useState("");
   const [endpoint, setEndpoint] = useState("");
   const [cameraId, setCameraId] = useState<string>(cameras[0]?.id ?? "");
   const [secretRef, setSecretRef] = useState("");
@@ -578,8 +633,9 @@ function BarrierForm({ lotId, cameras, onDone }: { lotId: string | null; cameras
             driver,
             endpoint: endpoint.trim(),
             camera_id: cameraId || null,
-            auth_secret_ref: secretRef.trim() || null,
+            auth_secret_ref: driver === "HIKVISION_ISAPI" ? null : secretRef.trim() || null,
             auto_close_seconds: autoClose ? Number(autoClose) : null,
+            ...(driver === "HIKVISION_ISAPI" ? { username: username.trim(), password } : {}),
             reason: t("devices.createReason"),
           },
           {
@@ -606,17 +662,39 @@ function BarrierForm({ lotId, cameras, onDone }: { lotId: string | null; cameras
         ))}
       </Select>
       <Eyebrow className="mt-3 mb-1">{t("devices.driver")}</Eyebrow>
-      <Segmented value={driver} onChange={setDriver} ariaLabel={t("devices.driver")} options={[{ value: "HTTP_REST", label: "HTTP REST" }, { value: "MODBUS_TCP", label: "Modbus TCP" }]} />
+      <Segmented
+        value={driver}
+        onChange={setDriver}
+        ariaLabel={t("devices.driver")}
+        options={(["HIKVISION_ISAPI", "MODBUS_TCP", "HTTP_REST"] as const).map((d) => ({ value: d, label: DRIVER_LABEL[d] }))}
+      />
+      {driver === "HIKVISION_ISAPI" && <p className="mt-1 rounded-lg bg-surface-2 px-3 py-2 text-[12.5px] font-semibold text-ink-2">{t("devices.hikvisionHint")}</p>}
       <Label htmlFor="bar-endpoint" className="mt-3">
         {t("devices.endpoint")}
       </Label>
-      <Input id="bar-endpoint" className="font-mono" value={endpoint} onChange={(e) => setEndpoint(e.target.value)} placeholder={driver === "HTTP_REST" ? "http://10.100.5.20/relay" : "10.100.5.21:502?unit=1&open_coil=0&close_coil=1&pulse_ms=500"} data-testid="barrier-endpoint" />
+      <Input id="bar-endpoint" className="font-mono" value={endpoint} onChange={(e) => setEndpoint(e.target.value)} placeholder={ENDPOINT_PLACEHOLDER[driver]} data-testid="barrier-endpoint" />
       {hint && <div className={`mt-1 rounded-lg px-3 py-2 text-[12.5px] font-semibold ${hint.ok ? "bg-ok-soft text-ok-ink" : "bg-warn-soft text-warn-ink"}`}>{hint.text}</div>}
-      <Label htmlFor="bar-secret" className="mt-3">
-        {t("devices.secretRef")} {driver === "HTTP_REST" && <span className="text-bad-ink">*</span>}
-      </Label>
-      <Input id="bar-secret" className="font-mono" value={secretRef} onChange={(e) => setSecretRef(e.target.value)} placeholder="kv/tenants/<tenant>/barriers/<name>" data-testid="barrier-secret" />
-      <p className="text-[12px] font-semibold text-muted">{t("devices.secretHint")}</p>
+      {driver === "HIKVISION_ISAPI" ? (
+        <div className="mt-3 grid gap-3 sm:grid-cols-2">
+          <div>
+            <Label htmlFor="bar-user">{t("devices.cameraLogin")}</Label>
+            <Input id="bar-user" value={username} onChange={(e) => setUsername(e.target.value)} autoComplete="off" data-testid="barrier-username" />
+          </div>
+          <div>
+            <Label htmlFor="bar-pass">{t("devices.cameraPassword")}</Label>
+            <Input id="bar-pass" type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="new-password" data-testid="barrier-password" />
+          </div>
+          <p className="text-[12px] font-semibold text-muted sm:col-span-2">{t("devices.cameraPasswordHint")}</p>
+        </div>
+      ) : (
+        <>
+          <Label htmlFor="bar-secret" className="mt-3">
+            {t("devices.secretRef")} {driver === "HTTP_REST" && <span className="text-bad-ink">*</span>}
+          </Label>
+          <Input id="bar-secret" className="font-mono" value={secretRef} onChange={(e) => setSecretRef(e.target.value)} placeholder="kv/tenants/<tenant>/barriers/<name>" data-testid="barrier-secret" />
+          <p className="text-[12px] font-semibold text-muted">{t("devices.secretHint")}</p>
+        </>
+      )}
       <Label htmlFor="bar-autoclose" className="mt-3">
         {t("devices.autoClose")}
       </Label>
@@ -624,7 +702,14 @@ function BarrierForm({ lotId, cameras, onDone }: { lotId: string | null; cameras
       <p className="text-[12px] font-semibold text-muted">{t("devices.autoCloseHint")}</p>
       {create.isError && <ErrorBox error={create.error} />}
       <div className="mt-4 flex gap-2">
-        <Button type="submit" className="ml-auto" disabled={create.isPending || !lotId || name.trim().length < 2 || endpoint.trim().length < 3 || (driver === "HTTP_REST" && secretRef.trim().length < 3)} data-testid="barrier-submit">
+        <Button type="submit" className="ml-auto" disabled={
+            create.isPending ||
+            !lotId ||
+            name.trim().length < 2 ||
+            endpoint.trim().length < 3 ||
+            (driver === "HTTP_REST" && secretRef.trim().length < 3) ||
+            (driver === "HIKVISION_ISAPI" && (!username.trim() || !password))
+          } data-testid="barrier-submit">
           {t("devices.addBarrier")}
         </Button>
       </div>
@@ -632,9 +717,17 @@ function BarrierForm({ lotId, cameras, onDone }: { lotId: string | null; cameras
   );
 }
 
+type Driver = "HIKVISION_ISAPI" | "MODBUS_TCP" | "HTTP_REST";
+const DRIVER_LABEL: Record<string, string> = { HIKVISION_ISAPI: "Камера Hikvision", MODBUS_TCP: "Modbus TCP", HTTP_REST: "HTTP REST" };
+const ENDPOINT_PLACEHOLDER: Record<Driver, string> = {
+  HIKVISION_ISAPI: "http://192.168.1.64",
+  MODBUS_TCP: "10.100.5.21:502?unit=1&open_coil=0&close_coil=1&pulse_ms=500",
+  HTTP_REST: "http://10.100.5.20/relay",
+};
+
 /* Подсказка по адресу до сохранения: приватные адреса проходят только внутри allowlist площадки (проверяет сервер);
    здесь — грубая проверка формы адреса, чтобы монтажник увидел ошибку сразу. */
-function endpointHint(endpoint: string, driver: "HTTP_REST" | "MODBUS_TCP", t: (k: string) => string): { ok: boolean; text: string } | null {
+function endpointHint(endpoint: string, driver: Driver, t: (k: string) => string): { ok: boolean; text: string } | null {
   const v = endpoint.trim();
   if (!v) return null;
   if (driver === "HTTP_REST" && !/^https?:\/\//.test(v)) return { ok: false, text: t("devices.hintHttp") };

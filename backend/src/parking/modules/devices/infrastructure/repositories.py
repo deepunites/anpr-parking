@@ -48,12 +48,12 @@ def _command(r: Any) -> BarrierCommand:
 
 _BARRIER_INFO = """
     SELECT b.id, b.lot_id, b.driver::text AS driver, b.endpoint, b.auth_secret_ref, b.active, b.camera_id, b.name,
-           l.barrier_cidr_allowlist::text[] AS allowlist
+           l.barrier_cidr_allowlist::text[] AS allowlist, b.tenant_id, b.credentials_encrypted
     FROM barrier b JOIN parking_lot l ON l.id = b.lot_id
 """
 _BARRIER_COLUMNS = """
     id, tenant_id, lot_id, camera_id, name, driver::text AS driver, endpoint, auth_secret_ref, auto_close_seconds, active,
-    state::text AS state
+    state::text AS state, credentials_encrypted
 """
 _CAMERA_COLUMNS = """
     id, tenant_id, lot_id, code, name, direction::text AS direction, vendor::text AS vendor, location, confidence_min,
@@ -77,6 +77,8 @@ def _barrier(r: Any) -> BarrierInfo:
         camera_id=r.camera_id,
         name=r.name,
         allowlist=tuple(r.allowlist or ()),
+        tenant_id=r.tenant_id,
+        credentials_encrypted=bytes(r.credentials_encrypted) if r.credentials_encrypted is not None else None,
     )
 
 
@@ -93,6 +95,7 @@ def _barrier_entity(r: Any) -> Barrier:
         auto_close_seconds=r.auto_close_seconds,
         active=r.active,
         state=BarrierState(r.state),
+        credentials_encrypted=bytes(r.credentials_encrypted) if r.credentials_encrypted is not None else None,
     )
 
 
@@ -200,8 +203,10 @@ class SqlBarrierRepository:
         await self._s.execute(
             text(
                 """
-                INSERT INTO barrier (id, tenant_id, lot_id, camera_id, name, driver, endpoint, auth_secret_ref, auto_close_seconds, active)
-                VALUES (:id, :tenant, :lot, :camera, :name, CAST(:driver AS barrier_driver), :endpoint, :secret, :auto_close, :active)
+                INSERT INTO barrier (id, tenant_id, lot_id, camera_id, name, driver, endpoint, auth_secret_ref, auto_close_seconds, active,
+                                     credentials_encrypted)
+                VALUES (:id, :tenant, :lot, :camera, :name, CAST(:driver AS barrier_driver), :endpoint, :secret, :auto_close, :active,
+                        :creds)
                 """
             ),
             {
@@ -215,6 +220,7 @@ class SqlBarrierRepository:
                 "secret": b.auth_secret_ref,
                 "auto_close": b.auto_close_seconds,
                 "active": b.active,
+                "creds": b.credentials_encrypted,
             },
         )
         self._invalidate(b.lot_id)
@@ -224,7 +230,7 @@ class SqlBarrierRepository:
             text(
                 """
                 UPDATE barrier SET camera_id = :camera, name = :name, endpoint = :endpoint, auth_secret_ref = :secret,
-                    auto_close_seconds = :auto_close, active = :active
+                    auto_close_seconds = :auto_close, active = :active, credentials_encrypted = :creds
                 WHERE id = :id
                 """
             ),
@@ -236,6 +242,7 @@ class SqlBarrierRepository:
                 "secret": b.auth_secret_ref,
                 "auto_close": b.auto_close_seconds,
                 "active": b.active,
+                "creds": b.credentials_encrypted,
             },
         )
         self._invalidate(b.lot_id)

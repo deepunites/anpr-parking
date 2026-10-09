@@ -73,7 +73,9 @@ API-ключ внешней системы получает только пра�
 | POST | `/api/v1/camera/heartbeat` | ключ камеры (`X-Camera-Key`) |
 | POST | `/api/v1/camera/media/presign` | ключ камеры (`X-Camera-Key`) |
 | POST | `/api/v1/camera/vendor/dahua` | ключ камеры (`X-Camera-Key`) |
+| POST | `/api/v1/camera/vendor/dahua/{camera_key}` | ключ камеры (`X-Camera-Key`) |
 | POST | `/api/v1/camera/vendor/hikvision` | ключ камеры (`X-Camera-Key`) |
+| POST | `/api/v1/camera/vendor/hikvision/{camera_key}` | ключ камеры (`X-Camera-Key`) |
 | GET | `/api/v1/cameras` | `cameras:read` |
 | POST | `/api/v1/cameras` | `cameras:write` |
 | GET | `/api/v1/cameras/{camera_id}` | `cameras:read` |

@@ -150,6 +150,7 @@ class BarrierOut(BaseModel):
     auto_close_seconds: int | None
     active: bool
     state: str
+    has_credentials: bool = Field(default=False, description="логин/пароль контроллера заданы (сами не возвращаются)")
 
     @classmethod
     def of(cls, b: Barrier) -> BarrierOut:
@@ -164,6 +165,7 @@ class BarrierOut(BaseModel):
             auto_close_seconds=b.auto_close_seconds,
             active=b.active,
             state=b.state.value,
+            has_credentials=b.credentials_encrypted is not None,
         )
 
 
@@ -175,6 +177,10 @@ class CreateBarrierRequest(BaseModel):
     camera_id: UUID | None = None
     auth_secret_ref: str | None = Field(default=None, max_length=255)
     auto_close_seconds: int | None = Field(default=None, gt=0, le=600)
+    username: str | None = Field(default=None, max_length=64, description="HIKVISION_ISAPI: логин камеры")
+    password: str | None = Field(
+        default=None, max_length=128, description="HIKVISION_ISAPI: пароль камеры (не возвращается)"
+    )
     reason: Reason
 
 
@@ -185,6 +191,8 @@ class UpdateBarrierRequest(BaseModel):
     auth_secret_ref: str | None = Field(default=None, max_length=255)
     auto_close_seconds: int | None = Field(default=None, gt=0, le=600)
     active: bool | None = None
+    username: str | None = Field(default=None, max_length=64, description="новые логин и пароль — только парой")
+    password: str | None = Field(default=None, max_length=128)
     reason: Reason
 
 
@@ -380,6 +388,8 @@ async def create_barrier(
             camera_id=body.camera_id,
             auth_secret_ref=body.auth_secret_ref,
             auto_close_seconds=body.auto_close_seconds,
+            username=body.username,
+            password=body.password,
         ),
         reason=body.reason,
     )
@@ -405,6 +415,8 @@ async def update_barrier(
             auth_secret_ref=body.auth_secret_ref,
             auto_close_seconds=body.auto_close_seconds,
             active=body.active,
+            username=body.username,
+            password=body.password,
         ),
         reason=body.reason,
     )

@@ -34,6 +34,7 @@ import { SkeletonRows } from "@/components/ui/skeleton";
 import { ErrorBox } from "@/components/ErrorBox";
 import { toast } from "@/components/ui/toast";
 import { Tabs } from "@/components/ui/tabs";
+import { ReasonDialog } from "@/components/ReasonDialog";
 import { JournalTab } from "@/components/integrations/JournalTab";
 import { SandboxTab } from "@/components/integrations/SandboxTab";
 import { DocsTab } from "@/components/integrations/DocsTab";
@@ -230,29 +231,6 @@ function SecretView({ secret, hint, example, onClose }: { secret: string; hint: 
         <Button className="ml-auto" onClick={onClose}>{t("integrations.savedIt")}</Button>
       </div>
     </div>
-  );
-}
-
-function ReasonDialog({ open, title, confirm, busy, onClose, onConfirm }: { open: boolean; title: string; confirm: string; busy: boolean; onClose: () => void; onConfirm: (reason: string) => void }) {
-  const { t } = useTranslation();
-  const [reason, setReason] = useState("");
-  return (
-    <Dialog open={open} onClose={onClose} title={title}>
-      <form
-        className="space-y-3"
-        onSubmit={(e) => {
-          e.preventDefault();
-          onConfirm(reason.trim());
-        }}
-      >
-        <Label htmlFor="reason">{t("integrations.reason")}</Label>
-        <Input id="reason" value={reason} onChange={(e) => setReason(e.target.value)} placeholder={t("integrations.reasonPh")} data-testid="reason-input" />
-        <div className="flex gap-2">
-          <Button variant="ghost" onClick={onClose}>{t("integrations.cancel")}</Button>
-          <Button type="submit" variant="danger" className="ml-auto" disabled={busy || reason.trim().length < 3} data-testid="reason-confirm">{confirm}</Button>
-        </div>
-      </form>
-    </Dialog>
   );
 }
 

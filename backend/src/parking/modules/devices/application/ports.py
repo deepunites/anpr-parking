@@ -25,6 +25,8 @@ class BarrierInfo:
     camera_id: UUID | None = None
     name: str = ""
     allowlist: tuple[str, ...] = ()  # parking_lot.barrier_cidr_allowlist — нужен драйверу для SSRF-проверки
+    tenant_id: UUID | None = None  # для расшифровки credentials_encrypted (AAD — клиент)
+    credentials_encrypted: bytes | None = None  # HIKVISION_ISAPI: логин/пароль камеры (расшифровывает драйвер)
 
 
 class BarrierRepository(Protocol):
@@ -193,3 +195,10 @@ class CameraHealthWriter(Protocol):
 
 class EndpointResolver(Protocol):
     async def resolve(self, host: str) -> list[IPAddress]: ...
+
+
+class CredentialBox(Protocol):
+    """Шифрование учётных данных контроллера ключом клиента (platform.secret_box.TenantSecretBox)."""
+
+    def seal(self, tenant_id: UUID, purpose: str, secret: bytes) -> bytes: ...
+    def open(self, tenant_id: UUID, purpose: str, blob: bytes) -> bytes: ...

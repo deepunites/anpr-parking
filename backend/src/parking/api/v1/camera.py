@@ -12,7 +12,7 @@ from typing import Annotated, Any
 from uuid import UUID
 
 from defusedxml import ElementTree as ET  # noqa: N817 — запрет DOCTYPE/ENTITY/внешних сущностей на уровне парсера
-from fastapi import APIRouter, Depends, File, Form, Header, Request, Response, UploadFile
+from fastapi import APIRouter, Depends, Header, Path, Request, Response
 from pydantic import BaseModel, Field
 
 from parking.api.deps import client_info, get_container
@@ -36,6 +36,20 @@ async def camera_principal(
     x_camera_key: Annotated[str | None, Header()] = None,
 ) -> CameraPrincipal:
     principal = await container.camera_auth.authenticate(x_camera_key, client_ip=client_info(request).ip)
+    tenant_id_var.set(principal.tenant_id)
+    return principal
+
+
+async def camera_principal_from_path(
+    request: Request,
+    container: Annotated[Container, Depends(get_container)],
+    camera_key: Annotated[
+        str, Path(min_length=16, max_length=200, description="ключ камеры (камеры без своего заголовка)")
+    ],
+) -> CameraPrincipal:
+    """Hikvision/Dahua в режиме «HTTP-хост» не умеют добавлять заголовок — ключ приходит последним сегментом пути.
+    В журнал запросов пишется шаблон роута, в трассы и Sentry — маска (platform/telemetry.py, platform/sentry.py)."""
+    principal = await container.camera_auth.authenticate(camera_key, client_ip=client_info(request).ip)
     tenant_id_var.set(principal.tenant_id)
     return principal
 
@@ -207,11 +221,25 @@ async def _ingest(
 
 
 def hikvision_input(
-    values: dict[str, str], *, code: str, event_type: str | None, now: datetime, image_key: str | None
+    values: dict[str, str],
+    *,
+    code: str,
+    event_type: str | None,
+    now: datetime,
+    image_key: str | None,
+    camera_direction: str | None = None,
 ) -> CameraEventInput:
-    """EventNotificationAlert → вход приёма (общий для камеры и песочницы)."""
+    """EventNotificationAlert → вход приёма (общий для камеры и песочницы).
+
+    Тип события — по назначению камеры (IN → въезд, OUT → выезд): камера каждой полосы смотрит на подъезжающие машины
+    и для неё любое движение — «forward». Направление из XML используется, только если назначение не известно."""
     direction = values.get("direction", "").lower()
-    kind = event_type or ("EXIT" if direction in {"reverse", "out"} else "ENTRY")
+    if event_type:
+        kind = event_type
+    elif camera_direction in {"IN", "OUT"}:
+        kind = "ENTRY" if camera_direction == "IN" else "EXIT"
+    else:
+        kind = "EXIT" if direction in {"reverse", "out"} else "ENTRY"
     try:
         confidence = int(values.get("confidenceLevel") or values.get("confidence") or 0)
         event_time = datetime.fromisoformat(values.get("dateTime") or now.isoformat())
@@ -316,6 +344,96 @@ def _parse_xml(raw: bytes) -> dict[str, str]:
     return values
 
 
+_NO_PLATE = {"", "unknown", "nocarplate", "无车牌"}
+
+
+async def _hikvision_parts(request: Request) -> tuple[bytes, bytes | None, str | None]:
+    """XML события и кадр номера из любого варианта Hikvision: multipart с частью anpr.xml (или любой .xml/text/xml),
+    кадр licensePlatePicture.jpg (иначе первый jpg); без multipart — тело целиком XML (служебные события)."""
+    content_type = request.headers.get("content-type", "")
+    if "multipart/form-data" not in content_type:
+        return await request.body(), None, None
+    form = await request.form(max_files=8, max_fields=16, max_part_size=1024 * 1024)
+    xml: bytes | None = None
+    plate_pic: bytes | None = None
+    any_pic: bytes | None = None
+    event_type: str | None = None
+    for name, value in form.multi_items():
+        if isinstance(value, str):
+            if name == "event_type":
+                event_type = value
+            elif xml is None and value.lstrip().startswith("<"):
+                xml = value.encode()
+            continue
+        filename = (value.filename or name).lower()
+        ctype = (value.content_type or "").lower()
+        if xml is None and (filename.endswith(".xml") or "xml" in ctype):
+            xml = await value.read()
+        elif "licenseplate" in filename and plate_pic is None:
+            plate_pic = await value.read()
+        elif any_pic is None and (filename.endswith((".jpg", ".jpeg")) or "jpeg" in ctype):
+            any_pic = await value.read()
+    if xml is None:
+        raise ValidationError("Hikvision event without XML part")
+    return xml, plate_pic or any_pic, event_type
+
+
+async def _hikvision(
+    request: Request, response: Response, principal: CameraPrincipal, container: Container
+) -> CameraEventResponse:
+    started = time.perf_counter()
+    try:
+        raw_xml, picture, event_type = await _hikvision_parts(request)
+        values = _parse_xml(raw_xml)
+        kind = values.get("eventType", "ANPR").upper()
+        plate = (values.get("licensePlate") or values.get("plateNumber") or "").strip()
+        if kind == "HEARTBEAT":
+            # «Интервал контрольных сигналов» камеры: камера на связи — как POST /camera/heartbeat (Redis, без БД)
+            await container.heartbeats.record(
+                Heartbeat(camera_id=principal.camera_id, at=container.clock.now(), firmware_version=None),
+                ttl_seconds=3600,
+            )
+            return CameraEventResponse(
+                status="HEARTBEAT",
+                session_id=None,
+                barrier_command_id=None,
+                correlation_id=get_correlation_id(),
+                duplicate=False,
+            )
+        if kind != "ANPR" or plate.lower() in _NO_PLATE:
+            # videoloss и прочие служебные события, проезд без номера: камера не должна повторять отправку — 200
+            _journal(
+                container,
+                principal,
+                source="hikvision",
+                started=started,
+                outcome=Outcome.REJECTED,
+                status="IGNORED",
+                http_status=200,
+                message=f"eventType={kind}" + ("" if plate else ", no plate"),
+            )
+            return CameraEventResponse(
+                status="IGNORED",
+                session_id=None,
+                barrier_command_id=None,
+                correlation_id=get_correlation_id(),
+                duplicate=False,
+            )
+        image_key = await container.media.store_frame(principal, picture) if picture else None
+        data = hikvision_input(
+            values,
+            code=principal.code,
+            event_type=event_type,
+            now=container.clock.now(),
+            image_key=image_key,
+            camera_direction=principal.direction,
+        )
+    except Exception as exc:
+        _journal_error(container, principal, "hikvision", started, exc)
+        raise
+    return await _ingest(container, principal, data, response, source="hikvision", started=started)
+
+
 @router.post(
     "/vendor/hikvision",
     response_model=CameraEventResponse,
@@ -323,27 +441,31 @@ def _parse_xml(raw: bytes) -> dict[str, str]:
     responses={202: {"description": "принято в оффлайн-буфер"}},
 )
 async def hikvision_event(
+    request: Request,
     response: Response,
     principal: Annotated[CameraPrincipal, Depends(camera_principal)],
     container: Annotated[Container, Depends(get_container)],
-    anpr_xml: Annotated[UploadFile, File(alias="anpr.xml")],
-    licenseplatepicture_jpg: Annotated[UploadFile | None, File(alias="licensePlatePicture.jpg")] = None,
-    event_type: Annotated[str | None, Form()] = None,
 ) -> CameraEventResponse:
-    """multipart/form-data: часть anpr.xml (EventNotificationAlert) + кадр jpg. Кадр API кладёт в MinIO сам."""
-    started = time.perf_counter()
-    try:
-        values = _parse_xml(await anpr_xml.read())
-        image_key: str | None = None
-        if licenseplatepicture_jpg is not None:
-            image_key = await container.media.store_frame(principal, await licenseplatepicture_jpg.read())
-        data = hikvision_input(
-            values, code=principal.code, event_type=event_type, now=container.clock.now(), image_key=image_key
-        )
-    except Exception as exc:
-        _journal_error(container, principal, "hikvision", started, exc)
-        raise
-    return await _ingest(container, principal, data, response, source="hikvision", started=started)
+    """Ключ в заголовке X-Camera-Key. multipart/form-data: XML EventNotificationAlert (часть anpr.xml) + кадр jpg."""
+    return await _hikvision(request, response, principal, container)
+
+
+@router.post(
+    "/vendor/hikvision/{camera_key}",
+    response_model=CameraEventResponse,
+    openapi_extra=CAMERA_AUTH,
+    responses={202: {"description": "принято в оффлайн-буфер"}},
+)
+async def hikvision_event_by_path(
+    request: Request,
+    response: Response,
+    principal: Annotated[CameraPrincipal, Depends(camera_principal_from_path)],
+    container: Annotated[Container, Depends(get_container)],
+) -> CameraEventResponse:
+    """Для настоящей камеры: в веб-интерфейсе Hikvision (Сеть → Расширенные → HTTP-прослушивание / «Хост
+    уведомлений») задаётся адрес сервера и путь `/api/v1/camera/vendor/hikvision/<ключ камеры>` — свой заголовок
+    камера добавить не может. Служебные события (heartBeat и др.) и проезды без номера — 200 IGNORED."""
+    return await _hikvision(request, response, principal, container)
 
 
 @router.post(
@@ -359,6 +481,28 @@ async def dahua_event(
     container: Annotated[Container, Depends(get_container)],
 ) -> CameraEventResponse:
     """JSON Dahua (Picture.Plate.PlateNumber, Picture.SnapInfo.Direction, Picture.NormalPic.Content base64)."""
+    return await _dahua(request, response, principal, container)
+
+
+@router.post(
+    "/vendor/dahua/{camera_key}",
+    response_model=CameraEventResponse,
+    openapi_extra=CAMERA_AUTH,
+    responses={202: {"description": "принято в оффлайн-буфер"}},
+)
+async def dahua_event_by_path(
+    request: Request,
+    response: Response,
+    principal: Annotated[CameraPrincipal, Depends(camera_principal_from_path)],
+    container: Annotated[Container, Depends(get_container)],
+) -> CameraEventResponse:
+    """Ключ камеры последним сегментом пути — для камер, которые не умеют свой заголовок."""
+    return await _dahua(request, response, principal, container)
+
+
+async def _dahua(
+    request: Request, response: Response, principal: CameraPrincipal, container: Container
+) -> CameraEventResponse:
     started = time.perf_counter()
     try:
         raw = await request.body()
