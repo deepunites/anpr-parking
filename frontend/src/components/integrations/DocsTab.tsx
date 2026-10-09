@@ -45,7 +45,7 @@ export function DocsTab() {
     return out.sort((a, b) => a.path.localeCompare(b.path));
   }, [ref.data]);
   return (
-    <div className="grid gap-4 xl:grid-cols-2">
+    <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
       <Card>
         <CardTitle>
           <BookOpen className="mr-2 inline h-5 w-5" aria-hidden="true" /> {t("integrations.docs.auth")}

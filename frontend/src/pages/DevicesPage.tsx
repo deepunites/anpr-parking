@@ -37,6 +37,7 @@ import { ErrorBox } from "@/components/ErrorBox";
 import { useReasonDialog } from "@/components/ReasonDialog";
 import { toast } from "@/components/ui/toast";
 import { Tabs } from "@/components/ui/tabs";
+import { copyToClipboard } from "@/lib/clipboard";
 
 type Tab = "cameras" | "barriers";
 
@@ -456,7 +457,7 @@ function IssuedKeyView({ issued, camera, onClose }: { issued: IssuedKeyOut; came
   const localOnly = /^(localhost|127\.|\[::1\])/.test(server.hostname);
   const copy = async (text: string = issued.key) => {
     try {
-      await navigator.clipboard.writeText(text);
+      await copyToClipboard(text);
       setCopied(true);
       toast.ok(t("devices.copied"));
     } catch {

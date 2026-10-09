@@ -47,3 +47,7 @@ crash.log
 
 # Локальные настройки Claude Code (пути других проектов)
 /.claude/
+
+# сервер TrueNAS: настройки площадки и пароли (deploy/truenas)
+deploy/truenas/parking.env
+deploy/truenas/LOGINS.txt

@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { fmt, useTranslation } from "@/i18n";
 import { ApiError } from "@/api/errors";
 import { Button } from "@/components/ui/button";
+import { copyToClipboard } from "@/lib/clipboard";
 
 /** Ошибка API: человеческий текст по error.code + correlation_id с копированием одной кнопкой (§6). */
 export function ErrorBox({ error, onRetry }: { error: unknown; onRetry?: () => void }) {
@@ -23,7 +24,7 @@ export function ErrorBox({ error, onRetry }: { error: unknown; onRetry?: () => v
   const copy = async () => {
     if (!correlation) return;
     try {
-      await navigator.clipboard.writeText(correlation);
+      await copyToClipboard(correlation);
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     } catch {

@@ -4629,6 +4629,89 @@
         "title": "PresignResponse",
         "type": "object"
       },
+      "PreviewOut": {
+        "properties": {
+          "amount": {
+            "$ref": "#/components/schemas/MoneyOut"
+          },
+          "applied_rules": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Applied Rules",
+            "type": "array"
+          },
+          "billing_minutes": {
+            "title": "Billing Minutes",
+            "type": "integer"
+          },
+          "minutes": {
+            "title": "Minutes",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "minutes",
+          "amount",
+          "billing_minutes",
+          "applied_rules"
+        ],
+        "title": "PreviewOut",
+        "type": "object"
+      },
+      "PreviewRequest": {
+        "properties": {
+          "durations_minutes": {
+            "default": [
+              30,
+              60,
+              180,
+              600,
+              1440
+            ],
+            "description": "длительности стоянки, мин",
+            "items": {
+              "maximum": 43200.0,
+              "minimum": 1.0,
+              "type": "integer"
+            },
+            "maxItems": 12,
+            "minItems": 1,
+            "title": "Durations Minutes",
+            "type": "array"
+          },
+          "lot_id": {
+            "format": "uuid",
+            "title": "Lot Id",
+            "type": "string"
+          },
+          "rules": {
+            "additionalProperties": true,
+            "description": "правила тарифа в формате версии (суммы в тийинах)",
+            "title": "Rules",
+            "type": "object"
+          },
+          "start": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "время въезда для примера; по умолчанию — сейчас",
+            "title": "Start"
+          }
+        },
+        "required": [
+          "lot_id",
+          "rules"
+        ],
+        "title": "PreviewRequest",
+        "type": "object"
+      },
       "ProbeOut": {
         "properties": {
           "detail": {
@@ -13486,6 +13569,60 @@
           }
         ],
         "summary": "Publish Version",
+        "tags": [
+          "tariffs"
+        ],
+        "x-permission": [
+          "tariff:write"
+        ]
+      }
+    },
+    "/api/v1/tariff/preview": {
+      "post": {
+        "description": "Пример расчёта по черновику тарифа до публикации — экран «Тариф» показывает, сколько заплатят.",
+        "operationId": "preview_api_v1_tariff_preview_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PreviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/PreviewOut"
+                  },
+                  "title": "Response Preview Api V1 Tariff Preview Post",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Preview",
         "tags": [
           "tariffs"
         ],

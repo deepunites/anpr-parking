@@ -45,6 +45,13 @@ echo [!] Нужен Docker Compose v2 - обновите Docker Desktop.
 goto fail
 
 :compose_ok
+rem --- Адрес этого компьютера в сети площадки: по нему заходят телефоны кассиров и шлют события камеры.
+rem     Виртуальные адаптеры (WSL, Hyper-V, Docker) и автоадреса 169.254.* пропускаем.
+set "LAN_IPS="
+for /f "usebackq delims=" %%i in (`powershell -NoProfile -Command "$a = @(Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue).Where({ $_.IPAddress -notlike '127.*' -and $_.IPAddress -notlike '169.254.*' -and $_.InterfaceAlias -notlike 'vEthernet*' -and $_.InterfaceAlias -notlike '*WSL*' -and $_.InterfaceAlias -notlike '*Docker*' -and $_.InterfaceAlias -notlike '*Loopback*' }); ($a.IPAddress) -join ' '"`) do set "LAN_IPS=%%i"
+set "PARKING_LAN_URL="
+for %%a in (%LAN_IPS%) do if not defined PARKING_LAN_URL set "PARKING_LAN_URL=http://%%a:%PARKING_HTTP_PORT%"
+
 rem --- 3. Сборка образов: первый раз 5-15 минут, дальше - секунды
 echo Сборка образов - в первый раз это 5-15 минут, нужен интернет...
 %COMPOSE% build
@@ -75,18 +82,36 @@ timeout /t 2 /nobreak >nul
 goto wait_web
 
 :web_ready
-rem --- 6. Логины и ключи камер - в LOGINS.txt рядом с этим файлом
+rem --- 6. Брандмауэр Windows: порт веба - только для своей локальной сети (телефоны кассиров, камеры).
+rem     Правило создаётся один раз; Windows спросит разрешение администратора.
+set "FW_RULE=ANPR-Parking-%PARKING_HTTP_PORT%"
+netsh advfirewall firewall show rule name="%FW_RULE%" >nul 2>nul
+if not errorlevel 1 goto firewall_ok
+echo.
+echo Открываю порт %PARKING_HTTP_PORT% в брандмауэре Windows для локальной сети -
+echo Windows спросит разрешение администратора, нажмите "Да".
+powershell -NoProfile -Command "try { Start-Process netsh -Verb RunAs -Wait -WindowStyle Hidden -ArgumentList 'advfirewall firewall add rule name=%FW_RULE% dir=in action=allow protocol=TCP localport=%PARKING_HTTP_PORT% remoteip=localsubnet' } catch { exit 1 }" >nul 2>nul
+netsh advfirewall firewall show rule name="%FW_RULE%" >nul 2>nul
+if not errorlevel 1 goto firewall_ok
+echo [!] Порт не открыт: телефоны и камеры могут не подключиться.
+echo     Запустите START.bat ещё раз и нажмите "Да" в окне Windows.
+:firewall_ok
+
+rem --- 7. Логины и ключи камер - в LOGINS.txt рядом с этим файлом
 %COMPOSE% exec -T api cat /state/credentials.txt > LOGINS.txt 2>nul
 echo.
 type LOGINS.txt
 echo.
 echo ============================================================
-echo   Готово: %URL%
+echo   Готово. На этом компьютере: %URL%
+if defined PARKING_LAN_URL echo   Телефоны кассиров и камеры (Wi-Fi/сеть площадки): %PARKING_LAN_URL%
+if not defined PARKING_LAN_URL echo   [!] Не найден адрес компьютера в сети - подключите его к Wi-Fi/сети площадки
 echo   Логины и ключи камер сохранены в LOGINS.txt
 echo   Стенд работает в фоне - это окно можно закрыть.
 echo   Остановить: STOP.bat    Журналы: LOGS.bat
 echo ============================================================
-start "" "%URL%"
+rem в браузере - сетевой адрес: ссылки-приглашения сотрудникам строятся от него и открываются на телефонах
+if defined PARKING_LAN_URL (start "" "%PARKING_LAN_URL%") else (start "" "%URL%")
 pause
 exit /b 0
 

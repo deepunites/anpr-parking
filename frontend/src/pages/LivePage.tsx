@@ -23,6 +23,7 @@ import { Drawer } from "@/components/ui/drawer";
 import { ManualEntryForm } from "@/components/vehicle/ManualEntryForm";
 import { vehicleLabel } from "@/components/vehicle/vehicle";
 import { hasPermission, useAuthStore } from "@/auth/store";
+import { useMediaQuery, WIDE } from "@/lib/useMediaQuery";
 import { detectFormat, normalizePlate } from "@/lib/plate";
 
 function feedLabel(item: FeedItem, t: (k: string) => string): string {
@@ -116,8 +117,14 @@ export function LivePage() {
   const timeZone = lot?.timezone;
   const { status, stale, feed, alerts } = useLotSocket(lotId);
   const occ = useOccupancy(lotId);
-  const cameras = useCameras();
-  const barriers = useBarriers();
+  const me = useAuthStore((st) => st.me);
+  // кассиру устройства не положены (403) — не запрашиваем и не показываем «0 / 0» с советом добавить камеры
+  const seeCameras = hasPermission(me, "cameras:read");
+  const seeBarriers = hasPermission(me, "barriers:read");
+  const cameras = useCameras(seeCameras);
+  const barriers = useBarriers(seeBarriers);
+  // на телефоне и планшете карточка машины — поверх очереди, а не третьим блоком внизу страницы
+  const wide = useMediaQuery(WIDE);
   const active = useLotSessions(lotId, ["ACTIVE"]);
   const review = useReviewQueue(lotId !== null);
   const [tab, setTab] = useState("active");
@@ -125,7 +132,6 @@ export function LivePage() {
   const [focusIdx, setFocusIdx] = useState(-1);
   const [query, setQuery] = useState("");
   const search = useSearch(query);
-  const me = useAuthStore((st) => st.me);
   const canManual = hasPermission(me, "sessions:write");
   const [manual, setManual] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
@@ -219,21 +225,25 @@ export function LivePage() {
           testId="stat-occupancy"
         />
         <Stat label={t("live.review")} value={reviewForLot.length} tone={reviewForLot.length > 0 ? "warn" : "ink"} testId="stat-review" />
-        <Stat
-          label={t("live.cameras")}
-          value={
-            <>
-              {camsOnline} <span className="text-base text-muted">/ {camsForLot.length}</span>
-            </>
-          }
-          sub={camsForLot.length > 0 && camsOnline === camsForLot.length ? "online" : undefined}
-          tone={camsForLot.length > 0 && camsOnline < camsForLot.length ? "warn" : "ink"}
-          testId="stat-cameras"
-        />
-        <Stat label={t("live.barriers")} value={barriersForLot.length === 0 ? "—" : barriersBad === 0 ? "OK" : barriersBad} sub={barriersForLot.length > 0 ? `${barriersForLot.length}` : undefined} tone={barriersBad > 0 ? "warn" : "ink"} testId="stat-barriers" />
+        {seeCameras && (
+          <Stat
+            label={t("live.cameras")}
+            value={
+              <>
+                {camsOnline} <span className="text-base text-muted">/ {camsForLot.length}</span>
+              </>
+            }
+            sub={camsForLot.length > 0 && camsOnline === camsForLot.length ? "online" : undefined}
+            tone={camsForLot.length > 0 && camsOnline < camsForLot.length ? "warn" : "ink"}
+            testId="stat-cameras"
+          />
+        )}
+        {seeBarriers && (
+          <Stat label={t("live.barriers")} value={barriersForLot.length === 0 ? "—" : barriersBad === 0 ? "OK" : barriersBad} sub={barriersForLot.length > 0 ? `${barriersForLot.length}` : undefined} tone={barriersBad > 0 ? "warn" : "ink"} testId="stat-barriers" />
+        )}
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-[330px_minmax(0,1fr)_300px]">
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-[330px_minmax(0,1fr)_300px]">
         {/* Очередь */}
         <Card className="flex min-h-[28rem] flex-col">
           <CardTitle>{t("live.queue")}</CardTitle>
@@ -249,7 +259,7 @@ export function LivePage() {
               aria-label={t("live.search")}
               data-testid="plate-search"
             />
-            <Kbd className="absolute top-1/2 right-3 -translate-y-1/2">/</Kbd>
+            <Kbd className="absolute top-1/2 right-3 hidden -translate-y-1/2 pointer-fine:block">/</Kbd>
           </div>
           <div className="mt-2">
             <Tabs
@@ -264,14 +274,15 @@ export function LivePage() {
           <div role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`} className="mt-2 flex-1 overflow-y-auto">
             {pending && <SkeletonRows />}
             {error && <ErrorBox error={error} />}
-            {!pending && !error && list.length === 0 && (searching ? <p className="p-2 text-[13px] font-semibold text-muted">{t("live.noResults")}</p> : <EmptyState title={t("sessions.empty")} hint={camsForLot.length > 0 ? t("live.emptyHint") : t("live.emptyNoCameras")} testId="queue-empty" />)}
+            {!pending && !error && list.length === 0 && (searching ? <p className="p-2 text-[13px] font-semibold text-muted">{t("live.noResults")}</p> : <EmptyState title={t("sessions.empty")} hint={camsForLot.length > 0 || !seeCameras ? t("live.emptyHint") : t("live.emptyNoCameras")} testId="queue-empty" />)}
             <ul className="space-y-1" data-testid={searching ? "list-search" : `list-${tab}`}>
               {list.map((s, i) => (
                 <SessionRow key={s.id} s={s} selected={selected === s.id} focused={focusIdx === i} onSelect={setSelected} timeZone={timeZone} now={now} highlight={searching ? query : undefined} />
               ))}
             </ul>
           </div>
-          <div className="mt-3 flex flex-wrap gap-x-3 gap-y-1 border-t border-line-2 pt-2 text-[11.5px] font-semibold text-muted">
+          {/* подсказки клавиатуры — только где есть мышь и клавиатура, на сенсорном экране они лишние */}
+          <div className="mt-3 hidden flex-wrap gap-x-3 gap-y-1 border-t border-line-2 pt-2 text-[11.5px] font-semibold text-muted pointer-fine:flex">
             <span>
               <Kbd>↑</Kbd> <Kbd>↓</Kbd> {t("live.keysQueue")}
             </span>
@@ -287,16 +298,24 @@ export function LivePage() {
           </div>
         </Card>
 
-        {/* Карточка сессии */}
-        <div className="min-h-[28rem]">
-          {selected ? (
-            <SessionPanel sessionId={selected} timeZone={timeZone} onClose={() => setSelected(null)} />
-          ) : (
-            <Card className="flex h-full min-h-[28rem] items-center justify-center">
-              <EmptyState title={t("live.pickSession")} hint={t("live.pickHint")} testId="session-empty" />
-            </Card>
-          )}
-        </div>
+        {/* Карточка сессии: на широком экране — средняя колонка, на телефоне и планшете — поверх экрана */}
+        {wide ? (
+          <div className="min-h-[28rem]">
+            {selected ? (
+              <SessionPanel sessionId={selected} timeZone={timeZone} onClose={() => setSelected(null)} />
+            ) : (
+              <Card className="flex h-full min-h-[28rem] items-center justify-center">
+                <EmptyState title={t("live.pickSession")} hint={t("live.pickHint")} testId="session-empty" />
+              </Card>
+            )}
+          </div>
+        ) : (
+          selected && (
+            <div className="fixed inset-0 z-40 overflow-y-auto bg-ground p-3" role="dialog" aria-modal="true" aria-label={t("live.pickSession")} data-testid="session-sheet">
+              <SessionPanel sessionId={selected} timeZone={timeZone} onClose={() => setSelected(null)} />
+            </div>
+          )
+        )}
 
         {/* Внимание + лента */}
         <Card className="flex min-h-[28rem] flex-col">

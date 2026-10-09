@@ -15,6 +15,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { ErrorBox } from "@/components/ErrorBox";
 import { cn } from "@/lib/cn";
 import { InviteForm, InviteLinkView, type IssuedInvite } from "@/components/staff/InviteForm";
+import { copyToClipboard } from "@/lib/clipboard";
 
 type StepId = "lot" | "tariff" | "cameras" | "map" | "team" | "done";
 const STEPS: { id: StepId; icon: ReactNode }[] = [
@@ -349,7 +350,7 @@ function KeysMemo({ issued, onDone }: { issued: { name: string; key: IssuedKeyOu
             variant="outline"
             onClick={async () => {
               try {
-                await navigator.clipboard.writeText(key.key);
+                await copyToClipboard(key.key);
                 setCopied(key.id);
               } catch {
                 /* буфер недоступен — ключ виден текстом */

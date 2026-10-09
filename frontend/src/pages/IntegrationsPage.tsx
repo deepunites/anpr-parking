@@ -38,6 +38,7 @@ import { ReasonDialog } from "@/components/ReasonDialog";
 import { JournalTab } from "@/components/integrations/JournalTab";
 import { SandboxTab } from "@/components/integrations/SandboxTab";
 import { DocsTab } from "@/components/integrations/DocsTab";
+import { copyToClipboard } from "@/lib/clipboard";
 
 const TABS = ["keys", "webhooks", "journal", "sandbox", "docs"] as const;
 type Tab = (typeof TABS)[number];
@@ -45,7 +46,7 @@ const INBOX_KEY = "anpr.test-inbox";
 
 async function copyText(text: string, done: string, failed: string) {
   try {
-    await navigator.clipboard.writeText(text);
+    await copyToClipboard(text);
     toast.ok(done);
   } catch {
     toast.warn(failed);
@@ -261,7 +262,7 @@ function WebhooksTab() {
     }
   };
   return (
-    <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_420px]">
+    <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_420px]">
       <div className="space-y-4">
         <Card>
           <CardTitle right={<Button onClick={() => setAdding(true)} data-testid="add-webhook"><Plus className="h-4 w-4" aria-hidden="true" /> {t("integrations.hooks.add")}</Button>}>

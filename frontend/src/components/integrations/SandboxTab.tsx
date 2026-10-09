@@ -70,7 +70,7 @@ export function SandboxTab() {
     return <EmptyState title={t("integrations.sandbox.noCameras")} hint={t("integrations.sandbox.noCamerasHint")} />;
   }
   return (
-    <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_380px]">
+    <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_380px]">
       <Card>
         <CardTitle>
           <FlaskConical className="mr-2 inline h-5 w-5" aria-hidden="true" /> {t("integrations.sandbox.title")}

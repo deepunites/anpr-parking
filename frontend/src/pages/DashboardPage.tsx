@@ -114,7 +114,7 @@ function BoardView({ b, money }: { b: Board; money: (v: number) => string }) {
           tone={b.review ? "warn" : "ink"}
         />
       </div>
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
         <RevenueCard b={b} series={series} money={money} />
         <Card>
           <CardTitle>{t("dashboard.byMethod")}</CardTitle>
@@ -122,7 +122,7 @@ function BoardView({ b, money }: { b: Board; money: (v: number) => string }) {
           {b.refunds > 0 && <p className="mt-3 text-[12.5px] font-semibold text-muted">{fmt(t("dashboard.refunds"), { sum: money(b.refunds) })}</p>}
         </Card>
       </div>
-      <div className="grid gap-4 xl:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
         <Card>
           <CardTitle>{t("dashboard.byHour")}</CardTitle>
           <p className="mb-2 text-[12.5px] font-semibold text-muted">{t("dashboard.byHourHint")}</p>
@@ -147,11 +147,11 @@ function BoardView({ b, money }: { b: Board; money: (v: number) => string }) {
         </Card>
         <LotsCard b={b} money={money} />
       </div>
-      <div className="grid gap-4 xl:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
         <ManualCard b={b} />
         <ShiftsCard b={b} money={money} />
       </div>
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
         <DevicesCard b={b} />
         <LimitsCard b={b} />
       </div>

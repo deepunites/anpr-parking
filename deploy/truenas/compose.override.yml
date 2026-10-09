@@ -1,0 +1,21 @@
+# Сервер TrueNAS на площадке: тот же набор сервисов, что у локального стенда (deploy/local/compose.yml), но
+# профиль site — одна компания, администратор, площадка и камера въезда, без демо-клиентов и без открытой регистрации.
+# Запускается скриптом deploy/truenas/install.sh; значения — из deploy/truenas/parking.env.
+services:
+  relay-sim:
+    profiles: ["demo"]  # имитатор Modbus-реле нужен только демо-стенду
+
+  init:
+    environment:
+      STAND_PROFILE: site
+      STAND_COMPANY: ${PARKING_COMPANY:-MediaPark}
+      STAND_LOT_NAME: ${PARKING_LOT_NAME:-MediaPark}
+      STAND_LOT_CAPACITY: ${PARKING_LOT_CAPACITY:-54}
+      STAND_LOT_CIDRS: ${PARKING_LOT_CIDRS:-192.168.13.0/24}
+      STAND_ADMIN_LOGIN: ${PARKING_ADMIN_LOGIN:-admin@mediapark.uz}
+      STAND_TIMEZONE: ${PARKING_TIMEZONE:-Asia/Tashkent}
+      STAND_DEMO_WEEK: "0"
+    depends_on:
+      relay-sim:
+        condition: service_started
+        required: false  # в профиле site имитатора нет

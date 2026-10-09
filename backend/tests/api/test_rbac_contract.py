@@ -255,6 +255,18 @@ SAMPLES: dict[tuple[str, str], dict[str, Any]] = {
     ("POST", "/api/v1/tariff/quote"): {
         "json": {"lot_id": str(LOT_A1), "entry": "2026-09-14T08:00:00+05:00", "exit": "2026-09-14T10:00:00+05:00"}
     },
+    ("POST", "/api/v1/tariff/preview"): {
+        "json": {
+            "lot_id": str(LOT_A1),
+            "rules": {
+                "grace_minutes": 15,
+                "first_hour_price": 500_000,
+                "price_per_hour": 300_000,
+                "rounding_mode": "UP",
+                "rounding_step_minutes": 15,
+            },
+        }
+    },
     ("GET", "/api/v1/integrations/catalog"): {},
     ("GET", "/api/v1/api-keys"): {},
     ("POST", "/api/v1/api-keys"): {"json": {"name": "rbac", "scopes": ["sessions:read"], "reason": "rbac contract"}},

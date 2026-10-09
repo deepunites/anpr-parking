@@ -151,7 +151,7 @@ export function PaymentsPage() {
   return (
     <div className="space-y-4">
       <h1 className="text-2xl font-extrabold">{t("payments.title")}</h1>
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_460px]">
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_460px]">
         <div className="space-y-4">
           {hasPermission(me, "shift:manage") && <ShiftPanel />}
           <Card>

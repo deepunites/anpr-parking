@@ -20,6 +20,7 @@ import { ErrorBox } from "@/components/ErrorBox";
 import { toast } from "@/components/ui/toast";
 import { Tabs } from "@/components/ui/tabs";
 import { cn } from "@/lib/cn";
+import { copyToClipboard } from "@/lib/clipboard";
 
 /* Роли, которые администратор клиента выдаёт сотрудникам; PLATFORM_* — только у оператора платформы. */
 const STAFF_ROLES: Role[] = ["OPERATOR", "CASHIER", "MANAGER", "VIEWER", "DEVELOPER", "OWNER", "TENANT_ADMIN"];
@@ -421,7 +422,7 @@ function IssuedPasswordView({ user, password, onClose }: { user: UserOut; passwo
   const [copied, setCopied] = useState(false);
   const copy = async () => {
     try {
-      await navigator.clipboard.writeText(`${window.location.origin}/login\n${loginOf(user)}\n${password}`);
+      await copyToClipboard(`${window.location.origin}/login\n${loginOf(user)}\n${password}`);
       setCopied(true);
       toast.ok(t("devices.copied"));
     } catch {

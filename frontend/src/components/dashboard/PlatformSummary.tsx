@@ -45,7 +45,7 @@ function SummaryView({ d, t }: { d: PlatformDashboardOut; t: (k: string, o?: { d
         <Stat label={t("platform.dash.trials")} value={d.trials} sub={d.trials_ending ? fmt(t("platform.dash.ending"), { n: d.trials_ending }) : undefined} tone={d.trials_ending ? "warn" : "ink"} />
         <Stat label={t("platform.dash.attention")} value={d.attention.length} tone={d.attention.length ? "warn" : "ok"} testId="kpi-attention" />
       </div>
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)]">
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)]">
         <Card>
           <CardTitle>
             <AlertTriangle className="mr-2 inline h-5 w-5 text-warn" aria-hidden="true" /> {t("platform.dash.attentionTitle")}

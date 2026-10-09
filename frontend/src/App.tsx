@@ -19,6 +19,7 @@ const IntegrationsPage = lazy(() => import("@/pages/IntegrationsPage").then((m) 
 const AccessPage = lazy(() => import("@/pages/VehiclesPage").then((m) => ({ default: m.VehiclesPage })));
 const UsersPage = lazy(() => import("@/pages/UsersPage").then((m) => ({ default: m.UsersPage })));
 const LotsPage = lazy(() => import("@/pages/LotsPage").then((m) => ({ default: m.LotsPage })));
+const TariffPage = lazy(() => import("@/pages/TariffPage").then((m) => ({ default: m.TariffPage })));
 const SignupPage = lazy(() => import("@/pages/SignupPage").then((m) => ({ default: m.SignupPage })));
 const WelcomePage = lazy(() => import("@/pages/WelcomePage").then((m) => ({ default: m.WelcomePage })));
 const SubscriptionPage = lazy(() => import("@/pages/SubscriptionPage").then((m) => ({ default: m.SubscriptionPage })));
@@ -88,6 +89,7 @@ export function App() {
           <Route path="sessions" element={<SessionsPage />} />
           <Route path="payments" element={<PaymentsPage />} />
           <Route path="lots" element={<LotsPage />} />
+          <Route path="tariff" element={<TariffPage />} />
           <Route path="devices" element={<DevicesPage />} />
           <Route path="cameras" element={<Navigate to="/devices" replace />} />
           <Route path="barriers" element={<Navigate to="/devices?tab=barriers" replace />} />

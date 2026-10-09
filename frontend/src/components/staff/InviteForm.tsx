@@ -8,6 +8,7 @@ import { Input, Label } from "@/components/ui/input";
 import { ErrorBox } from "@/components/ErrorBox";
 import { isEmail, normalizePhone } from "@/lib/phone";
 import { cn } from "@/lib/cn";
+import { copyToClipboard } from "@/lib/clipboard";
 
 export interface IssuedInvite {
   invite: InviteOut;
@@ -128,7 +129,7 @@ export function InviteLinkView({ issued, onDone, doneLabel }: { issued: IssuedIn
           variant="outline"
           onClick={async () => {
             try {
-              await navigator.clipboard.writeText(issued.link);
+              await copyToClipboard(issued.link);
               setCopied(true);
             } catch {
               /* буфер недоступен — ссылка видна текстом */

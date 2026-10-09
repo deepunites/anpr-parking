@@ -85,6 +85,22 @@ class QuoteRequest(BaseModel):
     discount_percent: int = Field(default=0, ge=0, le=100)
 
 
+class PreviewRequest(BaseModel):
+    lot_id: UUID
+    rules: dict[str, Any] = Field(description="правила тарифа в формате версии (суммы в тийинах)")
+    start: datetime | None = Field(default=None, description="время въезда для примера; по умолчанию — сейчас")
+    durations_minutes: list[Annotated[int, Field(ge=1, le=43_200)]] = Field(
+        default=[30, 60, 180, 600, 1440], min_length=1, max_length=12, description="длительности стоянки, мин"
+    )
+
+
+class PreviewOut(BaseModel):
+    minutes: int
+    amount: MoneyOut
+    billing_minutes: int
+    applied_rules: list[str]
+
+
 class BreakdownOut(BaseModel):
     kind: str
     starts_at: datetime
@@ -205,3 +221,27 @@ async def quote(
         AccessTerms(kind=body.access_kind, discount_percent=body.discount_percent),
     )
     return QuoteOut.of(calc)
+
+
+@router.post(
+    "/tariff/preview", response_model=list[PreviewOut], openapi_extra=permission_extra(Permission.TARIFF_WRITE)
+)
+async def preview(
+    body: PreviewRequest,
+    user: Annotated[CurrentUser, Depends(require(Permission.TARIFF_WRITE))],
+    container: Annotated[Container, Depends(get_container)],
+) -> list[PreviewOut]:
+    """Пример расчёта по черновику тарифа до публикации — экран «Тариф» показывает, сколько заплатят."""
+    start = body.start or container.clock.now()
+    calcs = await container.tariffs.preview(
+        user, body.lot_id, body.rules, start=start, durations=body.durations_minutes
+    )
+    return [
+        PreviewOut(
+            minutes=minutes,
+            amount=MoneyOut(**c.amount.to_dict()),
+            billing_minutes=c.billing_minutes,
+            applied_rules=list(c.applied_rules),
+        )
+        for minutes, c in zip(body.durations_minutes, calcs, strict=True)
+    ]

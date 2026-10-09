@@ -154,6 +154,7 @@ API-ключ внешней системы получает только пра�
 | POST | `/api/v1/subscriptions` | `access:write` |
 | GET | `/api/v1/tariff-plans/{plan_id}/versions` | `tariff:read` |
 | POST | `/api/v1/tariff-plans/{plan_id}/versions` | `tariff:write` |
+| POST | `/api/v1/tariff/preview` | `tariff:write` |
 | POST | `/api/v1/tariff/quote` | `tariff:read` |
 | GET | `/api/v1/tenants/current` | `lots:read` |
 | GET | `/api/v1/users` | `users:read` |

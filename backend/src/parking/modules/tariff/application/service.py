@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 from uuid import UUID, uuid4
 from zoneinfo import ZoneInfo
@@ -74,6 +74,24 @@ class TariffAdminService:
             raise NotFoundError("lot not found")
         async with self._uow_factory(actor.tenant_id) as uow:
             return await SqlTariffCalculator(self._repos(uow)).calculate(lot_id, entry, exit, access)
+
+    async def preview(
+        self, actor: CurrentUser, lot_id: UUID, rules: dict[str, Any], *, start: datetime, durations: Sequence[int]
+    ) -> list[TariffCalculation]:
+        """Черновик тарифа до публикации («сколько заплатят за 30 мин, 1 ч, сутки»): тот же разбор правил и движок,
+        что у оплаты, в часовом поясе площадки; ничего не записывается. Праздничный календарь не учитывается."""
+        parsed = TariffRules.from_json(rules)
+        if actor.allowed_lots() is not None and lot_id not in (actor.allowed_lots() or ()):
+            raise NotFoundError("lot not found")
+        async with self._uow_factory(actor.tenant_id) as uow:
+            lot = await self._repos(uow).lots.get(lot_id)
+        if lot is None:
+            raise NotFoundError("lot not found")
+        tz = ZoneInfo(lot.timezone)
+        return [
+            calculate(start, start + timedelta(minutes=m), parsed, AccessTerms(), HolidayCalendar(), tz)
+            for m in durations
+        ]
 
     async def list_plans(self, actor: CurrentUser, lot_id: UUID) -> list[TariffPlanView]:
         async with self._uow_factory(actor.tenant_id) as uow:

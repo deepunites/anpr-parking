@@ -14,12 +14,22 @@ from typing import Any
 
 STATE = Path(os.environ.get("STAND_STATE", "/state"))
 SECRETS_FILE = STATE / "secrets.json"
+PROFILE_FILE = STATE / "profile"
 PG_HOST = os.environ.get("STAND_PG_HOST", "postgres")
 PG_PORT = int(os.environ.get("STAND_PG_PORT", "5432"))
 PG_DB = os.environ.get("STAND_PG_DB", "parking")
 REDIS_URL = os.environ.get("STAND_REDIS_URL", "redis://redis:6379/0")
 S3_ENDPOINT = os.environ.get("STAND_S3_ENDPOINT", "http://minio:9000")
 APP_ROLES = ("app_critical", "app_bulk", "app_maintenance")
+
+
+def stand_profile() -> str:
+    """demo — демо-клиенты для показа (по умолчанию, START.bat); site — настоящая площадка (сервер TrueNAS): без
+    демо-данных и без открытой регистрации новых клиентов. Выбирается при первой настройке и хранится в томе /state."""
+    try:
+        return PROFILE_FILE.read_text(encoding="utf-8").strip() or "demo"
+    except FileNotFoundError:
+        return "demo"
 
 
 def load_secrets() -> dict[str, Any]:
@@ -44,7 +54,7 @@ def stand_env(s: dict[str, Any]) -> dict[str, str]:
     def role(name: str) -> str:
         return pg_dsn(name, s["db_passwords"][name], driver="postgresql+asyncpg")
 
-    return {
+    env = {
         "PARKING_ENV": "dev",
         "PARKING_DEBUG": "false",
         "PARKING_LOG_LEVEL": "INFO",
@@ -66,3 +76,7 @@ def stand_env(s: dict[str, Any]) -> dict[str, str]:
         "PARKING_CORS_ORIGINS": "[]",  # веб и API — один origin через nginx
         "PARKING_SIGNUP_DEV_CODES": "true",
     }
+    if stand_profile() == "site":
+        # настоящая площадка: регистрация чужих компаний из Wi-Fi парковки не нужна, коды на экране — тем более
+        env.update({"PARKING_SIGNUP_ENABLED": "false", "PARKING_SIGNUP_DEV_CODES": "false"})
+    return env

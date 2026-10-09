@@ -179,7 +179,7 @@ export function LayoutEditor({ lot, layout, onSaved }: { lot: LotOut; layout: La
   const conflict = save.error instanceof ApiError && save.error.code === "LAYOUT_CONFLICT";
 
   return (
-    <div className="grid gap-4 xl:grid-cols-[1fr_300px]" data-testid="layout-editor">
+    <div className="grid grid-cols-1 gap-4 xl:grid-cols-[1fr_300px]" data-testid="layout-editor">
       <div className="min-w-0 space-y-3">
         <div className="flex flex-wrap items-center gap-2">
           <Button size="sm" variant="outline" onClick={() => add("zone")} data-testid="add-zone"><Plus className="h-4 w-4" aria-hidden="true" /> {t("map.addZone")}</Button>

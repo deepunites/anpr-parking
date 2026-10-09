@@ -42,7 +42,7 @@ export function SubscriptionPage() {
           {s.blocked_reason === "SUSPENDED" ? t("sub.bannerSuspended") : t("sub.bannerExpired")}
         </div>
       )}
-      <div className="grid gap-4 md:grid-cols-[1.2fr_1fr]">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-[1.2fr_1fr]">
         <Card>
           <CardTitle right={<Badge tone={TONE[s.status as keyof typeof TONE] ?? "gray"}>{t(`sub.${s.status}`)}</Badge>}>
             {t("sub.plan")}: {s.plan.name}

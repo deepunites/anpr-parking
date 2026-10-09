@@ -1,0 +1,71 @@
+import { describe, expect, it } from "vitest";
+import { DEFAULT_FORM, formFromRules, isActiveAt, rulesFromForm, type TariffForm } from "./tariff";
+
+const base = (): TariffForm => structuredClone(DEFAULT_FORM);
+
+describe("rulesFromForm", () => {
+  it("turns sums into tiyins like the starter tariff of the server", () => {
+    expect(rulesFromForm(base())).toEqual({
+      grace_minutes: 15,
+      first_hour_price: 500_000,
+      price_per_hour: 300_000,
+      rounding_mode: "UP",
+      rounding_step_minutes: 15,
+      daily_max: 3_000_000,
+      overnight: null,
+      weekday_overrides: null,
+    });
+  });
+
+  it("supports night price, free and special days, and an empty daily cap", () => {
+    const form = base();
+    form.dailyMax = "";
+    form.night = true;
+    form.nightPrice = "1 000";
+    form.days[5] = { kind: "free", firstHour: "", perHour: "" };
+    form.days[6] = { kind: "custom", firstHour: "", perHour: "2500,5" };
+    const rules = rulesFromForm(form)!;
+    expect(rules["daily_max"]).toBeNull();
+    expect(rules["overnight"]).toEqual({ start: "22:00", end: "07:00", price_per_hour: 100_000 });
+    expect(rules["weekday_overrides"]).toEqual({
+      "5": { free: true, price_per_hour: null, first_hour_price: null, daily_max: null },
+      "6": { free: false, price_per_hour: 250_050, first_hour_price: null, daily_max: null },
+    });
+  });
+
+  it("rejects what the server would reject", () => {
+    for (const patch of [{ firstHour: "" }, { perHour: "-1" }, { grace: "abc" }, { step: "0" }, { dailyMax: "x" }]) {
+      expect(rulesFromForm({ ...base(), ...patch })).toBeNull();
+    }
+    expect(rulesFromForm({ ...base(), night: true, nightStart: "25:00" })).toBeNull();
+    const day = base();
+    day.days[0] = { kind: "custom", firstHour: "", perHour: "" };
+    expect(rulesFromForm(day)).toBeNull();
+  });
+
+  it("keeps fields the screen does not edit (holidays) from the current version", () => {
+    const current = { ...rulesFromForm(base())!, holiday: { free: true, price_per_hour: null, first_hour_price: null, daily_max: null } };
+    expect(rulesFromForm(base(), current)!["holiday"]).toEqual(current.holiday);
+  });
+});
+
+describe("formFromRules", () => {
+  it("round-trips a published version", () => {
+    const form = base();
+    form.night = true;
+    form.days[6] = { kind: "custom", firstHour: "4000", perHour: "2000" };
+    const rules = rulesFromForm(form)!;
+    expect(rulesFromForm(formFromRules(rules))).toEqual(rules);
+  });
+
+  it("falls back to the starter values when the lot has no tariff yet", () => {
+    expect(formFromRules(null)).toEqual(DEFAULT_FORM);
+  });
+});
+
+it("checks validity windows", () => {
+  const v = { valid_from: "2026-10-10T09:00:00+05:00", valid_to: "2026-10-11T09:00:00+05:00" };
+  expect(isActiveAt(v, Date.parse("2026-10-10T12:00:00+05:00"))).toBe(true);
+  expect(isActiveAt(v, Date.parse("2026-10-11T09:00:00+05:00"))).toBe(false);
+  expect(isActiveAt({ ...v, valid_to: null }, Date.parse("2030-01-01T00:00:00Z"))).toBe(true);
+});

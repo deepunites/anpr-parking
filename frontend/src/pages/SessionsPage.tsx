@@ -42,7 +42,7 @@ export function SessionsPage() {
           </Select>
         </div>
       </div>
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_460px]">
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_460px]">
         <Card>
           {sessions.isPending && <SkeletonRows rows={8} />}
           {sessions.isError && <ErrorBox error={sessions.error} onRetry={() => void sessions.refetch()} />}

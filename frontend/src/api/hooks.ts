@@ -125,12 +125,12 @@ export function useSearch(plate: string) {
   });
 }
 
-export function useCameras() {
-  return useQuery({ queryKey: keys.cameras, queryFn: async () => unwrap(await api.GET("/api/v1/cameras")), refetchInterval: 30_000 });
+export function useCameras(enabled = true) {
+  return useQuery({ queryKey: keys.cameras, queryFn: async () => unwrap(await api.GET("/api/v1/cameras")), refetchInterval: 30_000, enabled });
 }
 
-export function useBarriers() {
-  return useQuery({ queryKey: keys.barriers, queryFn: async () => unwrap(await api.GET("/api/v1/barriers")), staleTime: 60_000 });
+export function useBarriers(enabled = true) {
+  return useQuery({ queryKey: keys.barriers, queryFn: async () => unwrap(await api.GET("/api/v1/barriers")), staleTime: 60_000, enabled });
 }
 
 export function useCurrentShift(enabled: boolean) {
@@ -508,6 +508,48 @@ export function useQuickTariff() {
       );
     },
     onSuccess: (_d, v) => void qc.invalidateQueries({ queryKey: ["tariff-plans", v.lotId] }),
+  });
+}
+
+/* ---- раздел «Тариф»: текущие цены, пример расчёта по черновику, новая версия с выбранного момента ---- */
+export type TariffVersionOut = components["schemas"]["VersionOut"];
+export type TariffPreviewOut = components["schemas"]["PreviewOut"];
+export const PREVIEW_MINUTES = [30, 60, 180, 600, 1440];
+
+export function useTariffVersions(planId: string | null) {
+  return useQuery({
+    queryKey: ["tariff-versions", planId],
+    queryFn: async () => unwrap(await api.GET("/api/v1/tariff-plans/{plan_id}/versions", { params: { path: { plan_id: planId! } } })),
+    enabled: planId !== null,
+  });
+}
+
+/** Сколько заплатят по черновику — тем же движком, что и оплата; без записи. */
+export function useTariffPreview(lotId: string | null, rules: Record<string, unknown> | null) {
+  return useQuery({
+    queryKey: ["tariff-preview", lotId, rules],
+    queryFn: async () =>
+      unwrap(await api.POST("/api/v1/tariff/preview", { body: { lot_id: lotId!, rules: rules!, durations_minutes: PREVIEW_MINUTES } })),
+    enabled: lotId !== null && rules !== null,
+    placeholderData: keepPreviousData,
+    retry: false,
+  });
+}
+
+/** Новая цена: у площадки без тарифа сначала основной план, затем версия с valid_from (прошлые не меняются). */
+export function usePublishTariff() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ lotId, planId, rules, validFrom, reason }: { lotId: string; planId: string | null; rules: Record<string, unknown>; validFrom: string; reason: string }) => {
+      const id =
+        planId ??
+        unwrap(await api.POST("/api/v1/lots/{lot_id}/tariff-plans", { params: { path: { lot_id: lotId } }, body: { code: "BASE", name: "Основной", is_default: true, reason } })).id;
+      return unwrap(await api.POST("/api/v1/tariff-plans/{plan_id}/versions", { params: { path: { plan_id: id } }, body: { rules, valid_from: validFrom, reason } }));
+    },
+    onSuccess: (_d, v) => {
+      void qc.invalidateQueries({ queryKey: ["tariff-plans", v.lotId] });
+      void qc.invalidateQueries({ queryKey: ["tariff-versions"] });
+    },
   });
 }
 

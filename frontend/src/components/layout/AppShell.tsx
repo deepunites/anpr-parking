@@ -1,13 +1,14 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
 import { fmt, useTranslation } from "@/i18n";
-import { Activity, BadgeDollarSign, Building2, Cpu, CreditCard, KeyRound, LayoutDashboard, ListOrdered, LogOut, Map, Menu, ParkingSquare, Plug, Rocket, ShieldCheck, Users, Wifi, WifiOff, X } from "lucide-react";
+import { Activity, BadgeDollarSign, Building2, Cpu, CreditCard, KeyRound, LayoutDashboard, ListOrdered, LogOut, Map, Menu, ParkingSquare, Plug, Rocket, ShieldCheck, Users, Wallet, Wifi, WifiOff, X } from "lucide-react";
 import { useAuth } from "@/auth/useAuth";
 import { hasPermission } from "@/auth/store";
 import { useCurrentShift, useLots, useReviewQueue } from "@/api/hooks";
 import { useLotStore } from "@/lib/lot";
 import { setLang } from "@/i18n";
 import { cn } from "@/lib/cn";
+import { PHONE, useMediaQuery } from "@/lib/useMediaQuery";
 import { Button } from "@/components/ui/button";
 import { Segmented } from "@/components/ui/input";
 import { ToastViewport } from "@/components/ui/toast";
@@ -30,6 +31,7 @@ const GROUPS: { key: string; items: NavItem[] }[] = [
     key: "nav.groupSetup",
     items: [
       { to: "/lots", key: "nav.lots", permission: "lots:read", icon: <ParkingSquare className="h-[18px] w-[18px]" aria-hidden="true" /> },
+      { to: "/tariff", key: "nav.tariff", permission: "tariff:read", icon: <Wallet className="h-[18px] w-[18px]" aria-hidden="true" /> },
       { to: "/devices", key: "nav.devices", permission: "cameras:read", icon: <Cpu className="h-[18px] w-[18px]" aria-hidden="true" /> },
       { to: "/map", key: "nav.map", permission: "lots:read", icon: <Map className="h-[18px] w-[18px]" aria-hidden="true" /> },
       { to: "/users", key: "nav.users", permission: "users:read", icon: <Users className="h-[18px] w-[18px]" aria-hidden="true" /> },
@@ -101,7 +103,7 @@ function ThemeToggle() {
   const { t } = useTranslation();
   const { theme, setTheme, scale, setScale } = useThemeStore();
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex flex-wrap items-center gap-2">
       <Segmented<ThemeMode>
         ariaLabel={t("theme.label")}
         size="sm"
@@ -153,6 +155,8 @@ export function AppShell() {
   const { lotId, setLotId } = useLotStore();
   const review = useReviewQueue(hasPermission(me, "sessions:read"));
   const [menuOpen, setMenuOpen] = useState(false);
+  // на телефоне кассира шапка — только меню и площадка; тема, язык и выход — в выезжающем меню
+  const phone = useMediaQuery(PHONE);
 
   useEffect(() => {
     const items = lots.data ?? [];
@@ -221,12 +225,56 @@ export function AppShell() {
     </div>
   );
 
+  const account = (
+    <>
+      <ThemeToggle />
+      <select
+        id="lang-select"
+        aria-label={t("app.language")}
+        className="h-8 rounded-lg border border-line bg-surface px-2 text-[12.5px] font-bold"
+        value={i18n.language}
+        onChange={(e) => setLang(e.target.value as "ru" | "uz")}
+        data-testid="lang-select"
+      >
+        <option value="ru">Русский</option>
+        <option value="uz">O‘zbekcha</option>
+      </select>
+      <div className={cn("flex items-center gap-2.5", phone && "w-full min-w-0")}>
+        <span className="grid h-[34px] w-[34px] shrink-0 place-items-center rounded-full bg-[linear-gradient(145deg,#f5b301,#f97316)] text-[12px] font-extrabold text-[#1b1400]" aria-hidden="true">
+          {initials}
+        </span>
+        <div className={cn("leading-tight", phone ? "min-w-0 flex-1" : "hidden md:block")}>
+          <div className="truncate text-[13px] font-bold">{me?.display_name ?? me?.email}</div>
+          <div className="text-[11.5px] font-semibold text-muted" data-testid="me-role">
+            {me?.role ? t(`roles.${me.role}`) : ""}
+          </div>
+        </div>
+        <Button variant="ghost" size="icon" aria-label={t("pwd.menu")} title={t("pwd.menu")} onClick={() => navigate("/change-password")} data-testid="change-password-link">
+          <KeyRound className="h-[18px] w-[18px]" aria-hidden="true" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          aria-label={t("app.logout")}
+          title={t("app.logout")}
+          onClick={async () => {
+            await logout();
+            navigate("/login");
+          }}
+          data-testid="logout"
+        >
+          <LogOut className="h-[18px] w-[18px]" aria-hidden="true" />
+        </Button>
+      </div>
+    </>
+  );
+
   return (
     <div className="flex min-h-full">
       {/* Боковая панель: на широком экране — всегда, на планшете — выезжает по кнопке */}
       <aside
         className={cn(
-          "fixed inset-y-0 left-0 z-30 flex w-[232px] flex-col border-r border-line bg-surface px-3.5 py-4 transition-transform lg:static lg:translate-x-0",
+          "fixed inset-y-0 left-0 z-30 flex w-[232px] flex-col overflow-y-auto border-r border-line bg-surface px-3.5 py-4 transition-transform lg:static lg:translate-x-0",
           menuOpen ? "translate-x-0 shadow-pop" : "-translate-x-full",
         )}
         data-testid="sidebar"
@@ -242,6 +290,11 @@ export function AppShell() {
         </div>
         {nav}
         <ShiftCard />
+        {phone && (
+          <div className="mt-auto flex flex-wrap items-center gap-3 border-t border-line pt-3" data-testid="account-menu">
+            {account}
+          </div>
+        )}
       </aside>
       {menuOpen && <div className="fixed inset-0 z-20 bg-ink/40 lg:hidden" onClick={() => setMenuOpen(false)} role="presentation" />}
 
@@ -252,47 +305,7 @@ export function AppShell() {
           </Button>
           {hasPermission(me, "lots:read") && lotSelect}
           <div className="hidden sm:block" id="connection-slot" />
-          <div className="ml-auto flex flex-wrap items-center gap-3">
-            <ThemeToggle />
-            <select
-              id="lang-select"
-              aria-label={t("app.language")}
-              className="h-8 rounded-lg border border-line bg-surface px-2 text-[12.5px] font-bold"
-              value={i18n.language}
-              onChange={(e) => setLang(e.target.value as "ru" | "uz")}
-              data-testid="lang-select"
-            >
-              <option value="ru">Русский</option>
-              <option value="uz">O‘zbekcha</option>
-            </select>
-            <div className="flex items-center gap-2.5">
-              <span className="grid h-[34px] w-[34px] place-items-center rounded-full bg-[linear-gradient(145deg,#f5b301,#f97316)] text-[12px] font-extrabold text-[#1b1400]" aria-hidden="true">
-                {initials}
-              </span>
-              <div className="hidden leading-tight md:block">
-                <div className="text-[13px] font-bold">{me?.display_name ?? me?.email}</div>
-                <div className="text-[11.5px] font-semibold text-muted" data-testid="me-role">
-                  {me?.role ? t(`roles.${me.role}`) : ""}
-                </div>
-              </div>
-              <Button variant="ghost" size="icon" aria-label={t("pwd.menu")} title={t("pwd.menu")} onClick={() => navigate("/change-password")} data-testid="change-password-link">
-                <KeyRound className="h-[18px] w-[18px]" aria-hidden="true" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                aria-label={t("app.logout")}
-                title={t("app.logout")}
-                onClick={async () => {
-                  await logout();
-                  navigate("/login");
-                }}
-                data-testid="logout"
-              >
-                <LogOut className="h-[18px] w-[18px]" aria-hidden="true" />
-              </Button>
-            </div>
-          </div>
+          {!phone && <div className="ml-auto flex flex-wrap items-center gap-3">{account}</div>}
         </header>
         <SubscriptionBanner />
         <main className="min-w-0 flex-1 px-4 pb-6 lg:px-6" lang={i18n.language}>

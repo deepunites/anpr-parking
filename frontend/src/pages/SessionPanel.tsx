@@ -150,7 +150,7 @@ export function SessionPanel({ sessionId, timeZone, onClose }: { sessionId: stri
         </div>
       )}
 
-      <div className="grid gap-4 md:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <Photos sessionId={s.id} />
         <div className="grid content-start grid-cols-2 gap-2">
           <Fact label={t("session.minutes")} value={formatDuration(s.billing_minutes)} />

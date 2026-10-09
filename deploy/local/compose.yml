@@ -65,7 +65,10 @@ services:
 
   # фото с камер (Hikvision/Dahua присылают кадр вместе с номером)
   minio:
-    image: ${MINIO_IMAGE:-minio/minio:latest}
+    # minio/minio убран с Docker Hub и Quay, бинарники dl.min.io отдают 410 (2026-10) — сборка Chainguard из
+    # исходников; -dev — с /bin/sh для чтения паролей из /state. Работает не от root, том /data создаётся root'ом
+    image: ${MINIO_IMAGE:-cgr.dev/chainguard/minio:latest-dev}
+    user: "0:0"
     restart: unless-stopped
     entrypoint: ["/bin/sh", "-c"]
     command:
@@ -97,6 +100,7 @@ services:
     entrypoint: ["python", "/stand/bootstrap.py"]
     environment:
       STAND_HTTP_PORT: ${PARKING_HTTP_PORT:-8080}
+      STAND_LAN_URL: ${PARKING_LAN_URL:-}  # http://<IP компьютера>:<порт> — определяет START.bat (LOGINS.txt)
       STAND_DEMO_WEEK: ${STAND_DEMO_WEEK:-1}  # v2 этап 7: неделя демо-трафика для «Сводки» при первом запуске
     volumes:
       - ./stand:/stand:ro

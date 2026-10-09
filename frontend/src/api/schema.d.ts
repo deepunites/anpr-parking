@@ -1652,6 +1652,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/tariff/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Preview
+         * @description Пример расчёта по черновику тарифа до публикации — экран «Тариф» показывает, сколько заплатят.
+         */
+        post: operations["preview_api_v1_tariff_preview_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/tariff/quote": {
         parameters: {
             query?: never;
@@ -3481,6 +3501,48 @@ export interface components {
             object_key: string;
             /** Url */
             url: string;
+        };
+        /** PreviewOut */
+        PreviewOut: {
+            amount: components["schemas"]["MoneyOut"];
+            /** Applied Rules */
+            applied_rules: string[];
+            /** Billing Minutes */
+            billing_minutes: number;
+            /** Minutes */
+            minutes: number;
+        };
+        /** PreviewRequest */
+        PreviewRequest: {
+            /**
+             * Durations Minutes
+             * @description длительности стоянки, мин
+             * @default [
+             *       30,
+             *       60,
+             *       180,
+             *       600,
+             *       1440
+             *     ]
+             */
+            durations_minutes: number[];
+            /**
+             * Lot Id
+             * Format: uuid
+             */
+            lot_id: string;
+            /**
+             * Rules
+             * @description правила тарифа в формате версии (суммы в тийинах)
+             */
+            rules: {
+                [key: string]: unknown;
+            };
+            /**
+             * Start
+             * @description время въезда для примера; по умолчанию — сейчас
+             */
+            start?: string | null;
         };
         /** ProbeOut */
         ProbeOut: {
@@ -7863,6 +7925,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["VersionOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    preview_api_v1_tariff_preview_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PreviewRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PreviewOut"][];
                 };
             };
             /** @description Validation Error */

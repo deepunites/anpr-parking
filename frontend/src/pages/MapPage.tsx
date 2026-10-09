@@ -90,8 +90,10 @@ function NoLayout({ canEdit, lotId, capacity, name, onEditor }: { canEdit: boole
 // eslint-disable-next-line react-refresh/only-export-components -- хук рядом с экраном, где он живёт
 export function useQuickLayout(lotId: string, capacity: number, name: string) {
   const { t } = useTranslation();
-  const cameras = useCameras();
-  const barriers = useBarriers();
+  const { me } = useAuth();
+  // кассир видит карту, но не устройства (403): без них схема — только места
+  const cameras = useCameras(hasPermission(me, "cameras:read"));
+  const barriers = useBarriers(hasPermission(me, "barriers:read"));
   const save = useSaveLayout(lotId);
   const layout = useLayout(lotId);
   return {
@@ -126,7 +128,7 @@ function LiveMap({ lotId }: { lotId: string }) {
   const m = map.data;
   const ratio = m.capacity ? m.occupied / m.capacity : 0;
   return (
-    <div className="grid gap-4 xl:grid-cols-[1fr_300px]">
+    <div className="grid grid-cols-1 gap-4 xl:grid-cols-[1fr_300px]">
       <Card className="p-2">
         <LayoutCanvas doc={doc} mode="view" zoneLoads={loads} devices={devices} selected={focus ? { kind: "zone", id: focus } : null} />
       </Card>

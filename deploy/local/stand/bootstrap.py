@@ -17,6 +17,7 @@ import socket
 import subprocess
 import sys
 import time
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from uuid import UUID
@@ -24,11 +25,22 @@ from uuid import UUID
 import aioboto3
 import asyncpg
 from botocore.config import Config
-from standlib import APP_ROLES, PG_DB, S3_ENDPOINT, STATE, load_secrets, stand_env, superuser_dsn
+from standlib import (
+    APP_ROLES,
+    PG_DB,
+    PROFILE_FILE,
+    S3_ENDPOINT,
+    STATE,
+    load_secrets,
+    stand_env,
+    stand_profile,
+    superuser_dsn,
+)
 
 from parking.modules.identity.application.contracts import CurrentUser, Role
 from parking.modules.identity.application.user_service import CreateUserCommand
 from parking.modules.identity.infrastructure.argon2_hasher import Argon2Hasher
+from parking.modules.tariff.application.service import PublishVersionCommand
 from parking.platform.config import load_settings
 from parking.platform.crypto import EnvKeyProvider, PlateCrypto
 from parking.platform.db.engine import build_database
@@ -54,6 +66,17 @@ EXTRA_USERS = (  # роли v2, которых нет в seed_dev.sql
     (ALPHA, "OWNER", "owner@alpha-parking.uz", "Владелец парковки"),
     (ALPHA, "MANAGER", "manager@alpha-parking.uz", "Менеджер"),
 )
+# профиль site (сервер на площадке): вместо демо — одна компания, администратор, площадка и камера въезда
+SITE_LOT = UUID("00000000-0000-4000-8000-0000000051a1")
+SITE_CAMERA = UUID("00000000-0000-4000-8000-0000000051c1")
+SITE_TARIFF = {  # стартовые цены — меняются в разделе «Тариф» (суммы в тийинах)
+    "grace_minutes": 15,
+    "first_hour_price": 500_000,
+    "price_per_hour": 300_000,
+    "rounding_mode": "UP",
+    "rounding_step_minutes": 15,
+    "daily_max": 3_000_000,
+}
 _ALPHABET = "abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789"  # без похожих 0/O, 1/l/I
 
 
@@ -112,7 +135,59 @@ def migrate(s: dict[str, Any]) -> None:
     log("migrations: head")
 
 
-async def prepare_roles_and_seed(s: dict[str, Any], creds: dict[str, Any]) -> None:
+def resolve_profile() -> str:
+    """Профиль выбирается один раз (STAND_PROFILE при первом запуске) и дальше берётся из тома: повторный запуск
+    с другим окружением не превратит настоящую площадку в демо-стенд и наоборот."""
+    if PROFILE_FILE.exists():
+        return stand_profile()
+    profile = os.environ.get("STAND_PROFILE", "demo")
+    if profile not in {"demo", "site"}:
+        raise SystemExit(f"STAND_PROFILE must be demo or site, got {profile!r}")
+    PROFILE_FILE.write_text(profile, encoding="utf-8")
+    os.chmod(PROFILE_FILE, 0o644)  # читают процессы приложения (entry.py)
+    return profile
+
+
+async def seed_site(conn: asyncpg.Connection) -> None:
+    """Настоящая площадка: компания, администратор, площадка и камера въезда Hikvision — без демо-клиентов и машин.
+    Стрела (нужен пароль камеры), сотрудники и цены по ситуации настраиваются в панели."""
+    cidrs = [c.strip() for c in os.environ.get("STAND_LOT_CIDRS", "").split(",") if c.strip()]
+    for cidr in cidrs:
+        ipaddress.ip_network(cidr)  # опечатка в адресе подсети — ошибка запуска, а не молчаливо пустой список
+    company = os.environ.get("STAND_COMPANY", "MediaPark")
+    async with conn.transaction():
+        await conn.execute(
+            "INSERT INTO tenant (id, code, name, legal_name, crypto_key_ref) VALUES ($1, 'site', $2, $2, 'local/site')",
+            ALPHA,
+            company,
+        )
+        await conn.execute(
+            "INSERT INTO app_user (id, tenant_id, email, password_hash, role, display_name, must_change_password) "
+            "VALUES ($1, $2, $3, 'dev-placeholder', 'TENANT_ADMIN', 'Администратор', true)",
+            ADMINS[ALPHA],
+            ALPHA,
+            os.environ.get("STAND_ADMIN_LOGIN", "admin@mediapark.uz"),
+        )
+        await conn.execute(
+            "INSERT INTO parking_lot (id, tenant_id, code, name, capacity, timezone, barrier_cidr_allowlist) "
+            "VALUES ($1, $2, 'MAIN', $3, $4, $5, $6::cidr[])",
+            SITE_LOT,
+            ALPHA,
+            os.environ.get("STAND_LOT_NAME", company),
+            int(os.environ.get("STAND_LOT_CAPACITY", "50")),
+            os.environ.get("STAND_TIMEZONE", "Asia/Tashkent"),
+            cidrs,
+        )
+        await conn.execute(
+            "INSERT INTO camera (id, tenant_id, lot_id, code, name, direction, vendor) "
+            "VALUES ($1, $2, $3, 'ENTRY_01', 'Въезд 1', 'IN', 'HIKVISION')",
+            SITE_CAMERA,
+            ALPHA,
+            SITE_LOT,
+        )
+
+
+async def prepare_roles_and_seed(s: dict[str, Any], creds: dict[str, Any], profile: str) -> None:
 
     conn = await asyncpg.connect(superuser_dsn(s))
     try:
@@ -123,8 +198,12 @@ async def prepare_roles_and_seed(s: dict[str, Any], creds: dict[str, Any]) -> No
                 )
             )
         if not await conn.fetchval("SELECT count(*) FROM tenant"):
-            await conn.execute((SEED_DIR / "seed_dev.sql").read_text(encoding="utf-8"))
-            log("demo data loaded (seed_dev.sql)")
+            if profile == "site":
+                await seed_site(conn)
+                log("site created: company, administrator, lot, entry camera")
+            else:
+                await conn.execute((SEED_DIR / "seed_dev.sql").read_text(encoding="utf-8"))
+                log("demo data loaded (seed_dev.sql)")
         async with conn.transaction():
             hasher = Argon2Hasher()
             for row in await conn.fetch(
@@ -185,7 +264,7 @@ async def prepare_roles_and_seed(s: dict[str, Any], creds: dict[str, Any]) -> No
         await conn.close()
 
 
-async def users_and_camera_keys(s: dict[str, Any], creds: dict[str, Any]) -> None:
+async def users_and_camera_keys(s: dict[str, Any], creds: dict[str, Any], profile: str) -> None:
     os.environ.update(stand_env(s))
 
     settings = load_settings()
@@ -203,7 +282,7 @@ async def users_and_camera_keys(s: dict[str, Any], creds: dict[str, Any]) -> Non
             )
         finally:
             await conn.close()
-        for tenant_id, role, email, name in EXTRA_USERS:
+        for tenant_id, role, email, name in EXTRA_USERS if profile == "demo" else ():
             if email in existing:
                 continue
             password = new_password()
@@ -233,15 +312,33 @@ async def users_and_camera_keys(s: dict[str, Any], creds: dict[str, Any]) -> Non
                 "key": issued.raw,
             }
             log(f"camera key issued: {cam['lot']} / {cam['code']}")
+        if profile == "site":
+            await starter_tariff(container)
     finally:
         await container.aclose()
         await database.dispose()
 
 
-async def demo_week(s: dict[str, Any]) -> None:
+async def starter_tariff(container: Any) -> None:
+    """У площадки без тарифа выезд не посчитать — стартовые цены сразу, дальше их меняют в разделе «Тариф»."""
+    actor = CurrentUser(user_id=ADMINS[ALPHA], tenant_id=ALPHA, role=Role.TENANT_ADMIN, lot_scope=frozenset())
+    if await container.tariffs.list_plans(actor, SITE_LOT):
+        return
+    plan = await container.tariffs.create_plan(
+        actor, SITE_LOT, code="BASE", name="Основной", is_default=True, reason="первичная настройка"
+    )
+    await container.tariffs.publish_version(
+        actor,
+        PublishVersionCommand(plan_id=plan.id, rules=SITE_TARIFF, valid_from=datetime.now(UTC)),
+        reason="первичная настройка: стартовые цены",
+    )
+    log("starter tariff published")
+
+
+async def demo_week(s: dict[str, Any], profile: str) -> None:
     """v2 этап 7: при первом запуске — неделя демо-трафика (въезды, оплаты, смены, ручные открытия), чтобы сводка
     владельца не была пустой. Отключается STAND_DEMO_WEEK=0; повторно не запускается (сессии уже есть)."""
-    if os.environ.get("STAND_DEMO_WEEK", "1") == "0":
+    if profile != "demo" or os.environ.get("STAND_DEMO_WEEK", "1") == "0":
         return
     conn = await asyncpg.connect(superuser_dsn(s))
     try:
@@ -309,28 +406,41 @@ async def run_retention(s: dict[str, Any]) -> None:
 def save_credentials(creds: dict[str, Any], *, echo: bool = False) -> None:
     CREDENTIALS.write_text(json.dumps(creds, ensure_ascii=False, indent=2), encoding="utf-8")
     port = os.environ.get("STAND_HTTP_PORT", "8080")
-    lines = [
-        "ANPR Parking — локальный стенд",
-        "=" * 60,
-        f"Адрес:        http://localhost:{port}",
-        f"Из сети:      http://<IP этого компьютера>:{port}",
-        f"Регистрация:  http://localhost:{port}/signup  (код подтверждения показывается на экране)",
-        "",
-        "Входы (e-mail / пароль / роль):",
-    ]
+    # адрес компьютера в сети площадки определяет START.bat; без него — подсказка, как его узнать
+    lan = os.environ.get("STAND_LAN_URL", "").rstrip("/") or f"http://<IP этого компьютера>:{port}"
+    site = stand_profile() == "site"
+    if site:  # сервер на площадке (TrueNAS): один адрес для всех, регистрации чужих компаний нет
+        lines = [
+            "ANPR Parking — сервер площадки",
+            "=" * 60,
+            f"Панель (компьютер, телефоны кассиров, камеры):  {lan}",
+            "",
+            "Вход (логин / пароль / роль) — при первом входе система попросит задать свой пароль:",
+        ]
+    else:
+        lines = [
+            "ANPR Parking — локальный стенд",
+            "=" * 60,
+            f"На этом компьютере:  http://localhost:{port}",
+            f"Телефоны кассиров, планшеты, камеры (Wi-Fi/сеть площадки):  {lan}",
+            f"Регистрация:  {lan}/signup  (код подтверждения показывается на экране)",
+            "",
+            "Входы (e-mail / пароль / роль):",
+        ]
     width = max((len(e) for e in creds["users"]), default=0)
     for email, u in sorted(creds["users"].items(), key=lambda kv: (kv[1]["role"] != "PLATFORM_OWNER", kv[0])):
         lines.append(f"  {email.ljust(width)}  {u['password']}  {u['role']}")
-    lines += ["", "Ключи камер (передаются в заголовке X-Camera-Key):"]
+    lines += ["", "Ключи камер:"]
     for k in creds["camera_keys"].values():
         lines.append(f"  {k['camera']}")
-        lines.append(f"    {k['key']}")
+        lines.append(f"    ключ:                    {k['key']}")
+        lines.append(f"    Hikvision, «URL хоста»:  /api/v1/camera/vendor/hikvision/{k['key']}")
     lines += [
         "",
-        f"События камер: POST http://<IP этого компьютера>:{port}/api/v1/camera/events",
-        f"  Hikvision:   POST http://<IP этого компьютера>:{port}/api/v1/camera/vendor/hikvision",
-        f"  Dahua:       POST http://<IP этого компьютера>:{port}/api/v1/camera/vendor/dahua",
-        "Файл пересоздаётся при каждом запуске START.bat. Храните его как пароли.",
+        "Камеры Hikvision и Dahua не умеют свой заголовок — ключ в конце адреса:",
+        f"  {lan}/api/v1/camera/vendor/hikvision/<ключ>",
+        f"(Dahua — …/vendor/dahua/<ключ>). Свои интеграции: POST {lan}/api/v1/camera/events с заголовком X-Camera-Key.",
+        f"Файл пересоздаётся при каждом запуске {'install.sh' if site else 'START.bat'}. Храните его как пароли.",
     ]
     text = "\n".join(lines) + "\n"
     out = STATE / "credentials.txt"
@@ -351,10 +461,12 @@ async def main() -> None:
     await wait_postgres(superuser_dsn(s, db="postgres"))
     await ensure_database(s)
     migrate(s)
-    await prepare_roles_and_seed(s, creds)
+    profile = resolve_profile()
+    log(f"profile: {profile}")
+    await prepare_roles_and_seed(s, creds, profile)
     save_credentials(creds)  # пароли уже в базе — сохраняем сразу, до шагов, которые могут упасть
-    await users_and_camera_keys(s, creds)
-    await demo_week(s)
+    await users_and_camera_keys(s, creds, profile)
+    await demo_week(s, profile)
     await ensure_bucket(s)
     await run_retention(s)
     save_credentials(creds, echo=True)

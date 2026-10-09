@@ -14,7 +14,7 @@ from parking.modules.tariff.application.service import PublishVersionCommand
 from parking.runtime.container import Container
 from parking.shared.errors import ConflictError, NotFoundError, ValidationError
 from parking.shared.money import Money
-from tests.conftest import LOT_A2, PLAN_A1, TENANT_A, USER_A_ADMIN
+from tests.conftest import LOT_A2, LOT_B1, PLAN_A1, TENANT_A, USER_A_ADMIN
 from tests.support.api_fixtures import Principal, bearer
 
 TZ = ZoneInfo("Asia/Tashkent")
@@ -107,3 +107,57 @@ async def test_quote_endpoint_returns_money_formatted(client: httpx.AsyncClient,
         body["gross"]["minor"] == 1500000 and body["discount"]["minor"] == 495000 and body["amount"]["minor"] == 1005000
     )
     assert body["amount"]["formatted"] == "10 050,00 сум" and body["breakdown"][0]["kind"] == "FIRST_HOUR"
+
+
+PREVIEW_RULES = {
+    "grace_minutes": 15,
+    "first_hour_price": 500_000,  # 5 000 сум
+    "price_per_hour": 300_000,  # 3 000 сум/ч
+    "rounding_mode": "UP",
+    "rounding_step_minutes": 15,
+    "daily_max": 3_000_000,  # 30 000 сум в сутки
+}
+
+
+async def test_preview_prices_a_draft_without_publishing(
+    client: httpx.AsyncClient, users: dict[Role, Principal], container: Container
+) -> None:
+    """Экран «Тариф»: черновик считается тем же движком, что и оплата, а версия не создаётся."""
+    plans_before = await container.tariffs.list_plans(ADMIN, LOT_A2)
+    versions_before = [len(await container.tariffs.list_versions(ADMIN, p.id)) for p in plans_before]
+    headers = await bearer(client, users[Role.TENANT_ADMIN])
+    response = await client.post(
+        "/api/v1/tariff/preview",
+        headers=headers,
+        json={
+            "lot_id": str(LOT_A2),
+            "rules": PREVIEW_RULES,
+            "start": "2026-09-14T08:00:00+05:00",
+            "durations_minutes": [10, 60, 120, 600],
+        },
+    )
+    assert response.status_code == 200, response.text
+    amounts = [row["amount"]["minor"] for row in response.json()]
+    # 10 мин — бесплатно; час — 5 000; два часа — 5 000 + 3 000; 10 часов — 32 000, но не больше 30 000 в сутки
+    assert amounts == [0, 500_000, 800_000, 3_000_000]
+    assert response.json()[3]["amount"]["formatted"] == "30 000,00 сум"
+    assert [len(await container.tariffs.list_versions(ADMIN, p.id)) for p in plans_before] == versions_before
+
+
+async def test_preview_rejects_bad_rules_foreign_lots_and_cashiers(
+    client: httpx.AsyncClient, users: dict[Role, Principal]
+) -> None:
+    admin = await bearer(client, users[Role.TENANT_ADMIN])
+    bad = await client.post(
+        "/api/v1/tariff/preview", headers=admin, json={"lot_id": str(LOT_A2), "rules": {"price_per_hour": 1.5}}
+    )
+    assert bad.status_code == 422
+    foreign = await client.post(
+        "/api/v1/tariff/preview", headers=admin, json={"lot_id": str(LOT_B1), "rules": PREVIEW_RULES}
+    )
+    assert foreign.status_code == 404  # площадка другого клиента не видна
+    cashier = await bearer(client, users[Role.CASHIER])
+    denied = await client.post(
+        "/api/v1/tariff/preview", headers=cashier, json={"lot_id": str(LOT_A2), "rules": PREVIEW_RULES}
+    )
+    assert denied.status_code == 403
