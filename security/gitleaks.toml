@@ -30,4 +30,5 @@ regexes = [
   '''valid_to=NOW''',
   '''eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9''',
   '''-----BEGIN PRIVATE KEY-----"\)''',
+  '''^PARKING_[A-Z0-9_]+$''',  # имя переменной окружения ("PARKING_S3_SECRET_KEY"), не значение
 ]
