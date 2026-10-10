@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import re
 from typing import Any
 
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
@@ -11,7 +10,7 @@ from opentelemetry.sdk.trace.export import SpanExporter
 
 from parking.platform.config import Settings
 from parking.platform.db.engine import Database
-from parking.platform.logging import configure_logging, get_logger
+from parking.platform.logging import CAMERA_KEY_PATH, configure_logging, get_logger, mask_camera_key
 from parking.platform.sentry import init_sentry
 from parking.platform.tracing import configure_tracing, instrument_libraries
 
@@ -65,7 +64,7 @@ def instrument_app(app: Any) -> None:
     )
 
 
-_CAMERA_KEY_PATH = re.compile(r"(/api/v1/camera/vendor/[a-z]+/)[^/?#]+")
+_CAMERA_KEY_PATH = CAMERA_KEY_PATH  # общая маска журналов (platform/logging)
 
 
 def redact_camera_key(span: Any, scope: dict[str, Any]) -> None:
@@ -74,7 +73,7 @@ def redact_camera_key(span: Any, scope: dict[str, Any]) -> None:
     path = str(scope.get("path", ""))
     if span is None or not _CAMERA_KEY_PATH.search(path):
         return
-    masked = _CAMERA_KEY_PATH.sub(r"\1***", path)
+    masked = mask_camera_key(path)
     for attribute in ("http.target", "url.path"):
         span.set_attribute(attribute, masked)
     for attribute in ("http.url", "url.full"):

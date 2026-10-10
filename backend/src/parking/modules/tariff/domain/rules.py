@@ -23,6 +23,8 @@ from typing import Any
 from parking.shared.errors import ValidationError
 from parking.shared.money import Money
 
+MAX_MINUTES = 1440  # сутки: больше грейса и шага округления на парковке не бывает
+
 
 class RoundingMode(enum.StrEnum):
     UP = "UP"
@@ -76,8 +78,9 @@ class TariffRules:
     holiday_override: DayOverride | None = None
 
     def __post_init__(self) -> None:
-        if self.grace_minutes < 0 or self.rounding_step_minutes < 1:
-            raise ValidationError("grace_minutes must be >= 0 and rounding_step_minutes >= 1")
+        if not 0 <= self.grace_minutes <= MAX_MINUTES or not 1 <= self.rounding_step_minutes <= MAX_MINUTES:
+            # верхняя граница: шаг в миллионы минут — секунды расчёта в цикле движка на каждый выезд и пример
+            raise ValidationError("grace_minutes must be 0..1440 and rounding_step_minutes 1..1440")
         for m in (self.first_hour_price, self.price_per_hour, *(x for x in [self.daily_max] if x is not None)):
             if m.is_negative:
                 raise ValidationError("tariff prices must be non-negative")
@@ -126,7 +129,7 @@ class TariffRules:
                 weekday_overrides=overrides,
                 holiday_override=holiday,
             )
-        except (KeyError, TypeError, ValueError) as exc:
+        except (KeyError, TypeError, ValueError, AttributeError) as exc:  # AttributeError: "holiday": 5 и т. п.
             raise ValidationError(f"invalid tariff rules: {exc}") from None
 
     def to_json(self) -> dict[str, Any]:

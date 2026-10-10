@@ -23,6 +23,7 @@ jobs:
       - run: uv sync --frozen && uv run pytest tests/failure -m failure -q
         working-directory: backend
   load-staging:
+    if: vars.PARKING_INTERNAL_INFRA == 'true'  # свои раннеры staging — только во внутреннем контуре
     runs-on: [self-hosted, staging]
     steps:
       - uses: actions/checkout@v4
@@ -35,6 +36,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with: {name: k6-results, path: load/results/*.json}
   staging-schema:
+    if: vars.PARKING_INTERNAL_INFRA == 'true'
     runs-on: [self-hosted, staging]
     steps:
       - run: pg_dump --schema-only "$STAGING_RO_DSN" > schema.sql

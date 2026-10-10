@@ -45,6 +45,7 @@ from parking.platform.config import load_settings
 from parking.platform.crypto import EnvKeyProvider, PlateCrypto
 from parking.platform.db.engine import build_database
 from parking.runtime.container import build_container
+from parking.shared.errors import NotFoundError
 from parking.shared.plate import PlateNumber
 
 APP_DIR = Path(os.environ.get("STAND_APP_DIR", "/app"))  # alembic.ini и alembic/ в образе бэкенда
@@ -135,14 +136,23 @@ def migrate(s: dict[str, Any]) -> None:
     log("migrations: head")
 
 
-def resolve_profile() -> str:
+async def resolve_profile(s: dict[str, Any]) -> str:
     """Профиль выбирается один раз (STAND_PROFILE при первом запуске) и дальше берётся из тома: повторный запуск
-    с другим окружением не превратит настоящую площадку в демо-стенд и наоборот."""
+    с другим окружением не превратит настоящую площадку в демо-стенд и наоборот. База с данными без файла профиля —
+    стенд до появления профилей (или тот же том от демо-запуска): это demo, иначе site искал бы свою площадку."""
     if PROFILE_FILE.exists():
         return stand_profile()
     profile = os.environ.get("STAND_PROFILE", "demo")
     if profile not in {"demo", "site"}:
         raise SystemExit(f"STAND_PROFILE must be demo or site, got {profile!r}")
+    conn = await asyncpg.connect(superuser_dsn(s))
+    try:
+        has_data = bool(await conn.fetchval("SELECT count(*) FROM tenant"))
+    finally:
+        await conn.close()
+    if has_data and profile != "demo":
+        log(f"WARNING: database already has data without a profile — keeping demo, not {profile}")
+        profile = "demo"
     PROFILE_FILE.write_text(profile, encoding="utf-8")
     os.chmod(PROFILE_FILE, 0o644)  # читают процессы приложения (entry.py)
     return profile
@@ -154,7 +164,10 @@ async def seed_site(conn: asyncpg.Connection) -> None:
     cidrs = [c.strip() for c in os.environ.get("STAND_LOT_CIDRS", "").split(",") if c.strip()]
     for cidr in cidrs:
         ipaddress.ip_network(cidr)  # опечатка в адресе подсети — ошибка запуска, а не молчаливо пустой список
-    company = os.environ.get("STAND_COMPANY", "MediaPark")
+    company = os.environ.get("STAND_COMPANY", "MediaPark").strip() or "MediaPark"
+    admin = os.environ.get("STAND_ADMIN_LOGIN", "admin@mediapark.uz").strip().lower()
+    if "@" not in admin[1:]:
+        raise SystemExit(f"STAND_ADMIN_LOGIN must be an e-mail like admin@mediapark.uz, got {admin!r}")
     async with conn.transaction():
         await conn.execute(
             "INSERT INTO tenant (id, code, name, legal_name, crypto_key_ref) VALUES ($1, 'site', $2, $2, 'local/site')",
@@ -166,14 +179,14 @@ async def seed_site(conn: asyncpg.Connection) -> None:
             "VALUES ($1, $2, $3, 'dev-placeholder', 'TENANT_ADMIN', 'Администратор', true)",
             ADMINS[ALPHA],
             ALPHA,
-            os.environ.get("STAND_ADMIN_LOGIN", "admin@mediapark.uz"),
+            admin,
         )
         await conn.execute(
             "INSERT INTO parking_lot (id, tenant_id, code, name, capacity, timezone, barrier_cidr_allowlist) "
             "VALUES ($1, $2, 'MAIN', $3, $4, $5, $6::cidr[])",
             SITE_LOT,
             ALPHA,
-            os.environ.get("STAND_LOT_NAME", company),
+            os.environ.get("STAND_LOT_NAME", "").strip() or company,
             int(os.environ.get("STAND_LOT_CAPACITY", "50")),
             os.environ.get("STAND_TIMEZONE", "Asia/Tashkent"),
             cidrs,
@@ -277,8 +290,9 @@ async def users_and_camera_keys(s: dict[str, Any], creds: dict[str, Any], profil
             cameras = await conn.fetch(
                 "SELECT c.id, c.tenant_id, c.code, c.name, l.name AS lot FROM camera c "
                 "JOIN parking_lot l ON l.id = c.lot_id WHERE c.active AND c.tenant_id = ANY($1::uuid[]) "
-                "ORDER BY l.name, c.code",
+                "AND ($2::uuid IS NULL OR c.id = $2) ORDER BY l.name, c.code",
                 list(ADMINS),
+                SITE_CAMERA if profile == "site" else None,  # на площадке — ключ только первой камере; новые — в панели
             )
         finally:
             await conn.close()
@@ -322,11 +336,20 @@ async def users_and_camera_keys(s: dict[str, Any], creds: dict[str, Any], profil
 async def starter_tariff(container: Any) -> None:
     """У площадки без тарифа выезд не посчитать — стартовые цены сразу, дальше их меняют в разделе «Тариф»."""
     actor = CurrentUser(user_id=ADMINS[ALPHA], tenant_id=ALPHA, role=Role.TENANT_ADMIN, lot_scope=frozenset())
-    if await container.tariffs.list_plans(actor, SITE_LOT):
+    try:
+        plans = await container.tariffs.list_plans(actor, SITE_LOT)
+    except NotFoundError:  # площадку удалили в панели — тариф ставить некуда
         return
-    plan = await container.tariffs.create_plan(
-        actor, SITE_LOT, code="BASE", name="Основной", is_default=True, reason="первичная настройка"
-    )
+    plan = next((p for p in plans if p.is_default), None)
+    if plan is None and plans:
+        return  # тариф уже настроен в панели
+    if plan is None:
+        plan = await container.tariffs.create_plan(
+            actor, SITE_LOT, code="BASE", name="Основной", is_default=True, reason="первичная настройка"
+        )
+    elif await container.tariffs.list_versions(actor, plan.id):
+        return
+    # план без версии (прошлый запуск упал между шагами) — тоже доводим до цен, иначе выезд не посчитать
     await container.tariffs.publish_version(
         actor,
         PublishVersionCommand(plan_id=plan.id, rules=SITE_TARIFF, valid_from=datetime.now(UTC)),
@@ -449,8 +472,8 @@ def save_credentials(creds: dict[str, Any], *, echo: bool = False) -> None:
         os.chmod(path, 0o600)
         if os.geteuid() == 0:
             os.chown(path, APP_UID, APP_UID)  # читает контейнер api (START.bat забирает файл через него)
-    if echo:
-        print(text, flush=True)
+    if echo:  # сами пароли и ключи — не в журнал контейнера (его просят прислать при сбоях), только где лежат
+        log(f"credentials saved: {out} (START.bat/install.sh copy it to LOGINS.txt)")
 
 
 async def main() -> None:
@@ -461,7 +484,7 @@ async def main() -> None:
     await wait_postgres(superuser_dsn(s, db="postgres"))
     await ensure_database(s)
     migrate(s)
-    profile = resolve_profile()
+    profile = await resolve_profile(s)
     log(f"profile: {profile}")
     await prepare_roles_and_seed(s, creds, profile)
     save_credentials(creds)  # пароли уже в базе — сохраняем сразу, до шагов, которые могут упасть

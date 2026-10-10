@@ -54,6 +54,7 @@ spec:
             - --timeout-keep-alive={{ .Values.api.keepAliveSeconds }}
             - --timeout-graceful-shutdown={{ sub .Values.api.terminationGracePeriodSeconds 5 }}
             - --no-server-header
+            - --no-access-log  # ключ камеры в пути /camera/vendor/*/<ключ>; запросы пишет RequestLogMiddleware
             - --proxy-headers
             - --forwarded-allow-ips=*
           env:

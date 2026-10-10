@@ -20,6 +20,8 @@ require_docker() {
   command -v docker >/dev/null 2>&1 || fail "Не найден Docker. В TrueNAS: Apps → Configuration → Choose Pool (выберите пул)."
   docker info >/dev/null 2>&1 || fail "Docker не запущен. В TrueNAS: Apps → Configuration → Choose Pool и дождитесь «Running»."
   docker compose version >/dev/null 2>&1 || fail "Нет docker compose — нужна TrueNAS Community Edition 25.04 или новее."
+  # Dockerfile'ы используют BuildKit (RUN --mount): без buildx сборка падает с непонятной ошибкой
+  docker buildx version >/dev/null 2>&1 || echo "[!] Нет docker buildx — если сборка упадёт, пришлите журнал: нужен плагин buildx."
 }
 
 load_env() {
@@ -28,16 +30,25 @@ load_env() {
     chmod 600 "$ENV_FILE"
     echo "Создан $ENV_FILE со значениями по умолчанию (MediaPark, 54 места, подсеть 192.168.13.0/24)."
   fi
-  set -a
-  # shellcheck disable=SC1090
-  . "$ENV_FILE"
-  set +a
-  PARKING_HTTP_PORT=${PARKING_HTTP_PORT:-8080}
-  # адрес сервера в сети площадки: по нему заходят телефоны кассиров и шлют события камеры
-  LAN_IP=$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{for (i = 1; i < NF; i++) if ($i == "src") print $(i + 1)}' | head -n1)
+  # файл не исполняется как скрипт (значения с пробелами, $ и кавычками — законны для docker compose --env-file):
+  # скриптам нужны только порт и резервные копии, остальное читает compose
+  PARKING_HTTP_PORT=$(env_value PARKING_HTTP_PORT 8080)
+  # shellcheck disable=SC2034  # используются в backup.sh
+  PARKING_BACKUP_DIR=$(env_value PARKING_BACKUP_DIR /mnt/tank/anpr/backup)
+  # shellcheck disable=SC2034
+  PARKING_BACKUP_KEEP_DAYS=$(env_value PARKING_BACKUP_KEEP_DAYS 14)
+  # адрес сервера в сети площадки: по нему заходят телефоны кассиров и шлют события камеры (без шлюза — пусто)
+  LAN_IP=$( (ip -4 route get 1.1.1.1 2>/dev/null || true) | awk '{for (i = 1; i < NF; i++) if ($i == "src") print $(i + 1)}' | head -n1)
   if [ -n "${LAN_IP:-}" ]; then
     export PARKING_LAN_URL="http://$LAN_IP:$PARKING_HTTP_PORT"
   fi
+}
+
+# значение KEY из parking.env (последнее вхождение, без кавычек вокруг) или значение по умолчанию
+env_value() {
+  local value
+  value=$(sed -n "s/^[[:space:]]*$1=//p" "$ENV_FILE" | tail -n1 | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' -e 's/^"\(.*\)"$/\1/' -e "s/^'\(.*\)'\$/\1/")
+  echo "${value:-$2}"
 }
 
 compose() {

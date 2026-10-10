@@ -67,8 +67,11 @@ def _parse_hikvision(value: str) -> ParsedEndpoint:
     if "://" not in value:
         value = "http://" + value
     parts = urlsplit(value)
-    if parts.scheme not in {"http", "https"} or not parts.hostname:
-        raise ValidationError("Hikvision endpoint must be http(s)://camera-address")
+    if parts.scheme == "https":
+        # у камер самоподписанный сертификат — проверка TLS всегда падала бы как «camera unreachable»
+        raise ValidationError("use http://camera-address: Hikvision cameras have self-signed certificates")
+    if parts.scheme != "http" or not parts.hostname:
+        raise ValidationError("Hikvision endpoint must be http://camera-address")
     if parts.username or parts.password:
         raise ValidationError("credentials in endpoint URL are not allowed — use login and password fields")
     if parts.path not in {"", "/"}:
@@ -79,15 +82,25 @@ def _parse_hikvision(value: str) -> ParsedEndpoint:
             raise ValidationError(f"unsupported Hikvision endpoint parameter {key}")
         if key == "mode" and val not in {"barrier", "io"}:
             raise ValidationError("Hikvision mode must be barrier or io")
-        if key != "mode" and not (val.isdigit() and 0 < int(val) <= (5000 if key == "pulse_ms" else 16)):
+        if key != "mode" and not (_digits(val) and 0 < int(val) <= (5000 if key == "pulse_ms" else 16)):
             raise ValidationError(f"invalid Hikvision endpoint parameter {key}")
-    port = parts.port or (443 if parts.scheme == "https" else 80)
-    return ParsedEndpoint(parts.scheme, parts.hostname, port, "/", query)
+    return ParsedEndpoint(parts.scheme, parts.hostname, parts.port or 80, "/", query)
+
+
+def _digits(value: str) -> bool:
+    return value.isascii() and value.isdigit()  # «²».isdigit() — True, но int() падает
 
 
 def parse_endpoint(endpoint: str, *, driver: str) -> ParsedEndpoint:
     """HTTP_REST: URL http(s)://host[:port]/path. MODBUS_TCP: host[:port][?unit=&open_coil=&close_coil=&pulse_ms=].
-    HIKVISION_ISAPI: http(s)://camera[:port][?channel=&mode=&output=&pulse_ms=]."""
+    HIKVISION_ISAPI: http://camera[:port][?channel=&mode=&output=&pulse_ms=]."""
+    try:
+        return _parse_endpoint(endpoint, driver=driver)
+    except ValueError as exc:  # urlsplit/port: «[fe80::1», «:99999» — ошибка ввода (422), не сбой (500)
+        raise ValidationError(f"invalid endpoint: {exc}") from None
+
+
+def _parse_endpoint(endpoint: str, *, driver: str) -> ParsedEndpoint:
     value = endpoint.strip()
     if driver == "HTTP_REST":
         parts = urlsplit(value)
@@ -104,7 +117,7 @@ def parse_endpoint(endpoint: str, *, driver: str) -> ParsedEndpoint:
         raise ValidationError("MODBUS_TCP endpoint must be host[:port][?unit=&open_coil=&close_coil=]")
     query = {k: v[-1] for k, v in parse_qs(parts.query).items()}
     for key, value_ in query.items():
-        if key not in {"unit", "open_coil", "close_coil", "pulse_ms"} or not value_.isdigit():
+        if key not in {"unit", "open_coil", "close_coil", "pulse_ms"} or not _digits(value_):
             raise ValidationError(f"unsupported MODBUS endpoint parameter {key}")
     return ParsedEndpoint("modbus", parts.hostname, parts.port or 502, "/", query)
 

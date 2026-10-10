@@ -24,6 +24,7 @@ import { ManualEntryForm } from "@/components/vehicle/ManualEntryForm";
 import { vehicleLabel } from "@/components/vehicle/vehicle";
 import { hasPermission, useAuthStore } from "@/auth/store";
 import { useMediaQuery, WIDE } from "@/lib/useMediaQuery";
+import { hasLayers } from "@/components/ui/layers";
 import { detectFormat, normalizePlate } from "@/lib/plate";
 
 function feedLabel(item: FeedItem, t: (k: string) => string): string {
@@ -125,6 +126,7 @@ export function LivePage() {
   const barriers = useBarriers(seeBarriers);
   // на телефоне и планшете карточка машины — поверх очереди, а не третьим блоком внизу страницы
   const wide = useMediaQuery(WIDE);
+  const sheetRef = useRef<HTMLDivElement>(null);
   const active = useLotSessions(lotId, ["ACTIVE"]);
   const review = useReviewQueue(lotId !== null);
   const [tab, setTab] = useState("active");
@@ -165,6 +167,7 @@ export function LivePage() {
   // Клавиатура: / — в поиск, ↑↓ — по очереди, Enter — открыть карточку, Esc — закрыть карточку / очистить поиск
   const onKey = useCallback(
     (e: KeyboardEvent) => {
+      if (hasLayers()) return; // диалог поверх (наличные, основание) — его клавиши, не очереди
       const target = e.target as HTMLElement | null;
       const typing = target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.tagName === "SELECT" || target.isContentEditable);
       if (e.key === "/" && !typing) {
@@ -178,6 +181,9 @@ export function LivePage() {
         return;
       }
       if (typing && target !== searchRef.current) return;
+      // очередь — только из поиска, самой очереди или «ниоткуда»: Enter на кнопке карточки — её нажатие, а не выбор
+      const inQueue = !target || target === document.body || target === searchRef.current || target.closest("[data-queue]") !== null;
+      if (!inQueue) return;
       if (e.key === "ArrowDown" || e.key === "ArrowUp") {
         if (list.length === 0) return;
         e.preventDefault();
@@ -195,6 +201,11 @@ export function LivePage() {
     return () => document.removeEventListener("keydown", onKey);
   }, [onKey]);
   useEffect(() => setFocusIdx(-1), [tab, searching]);
+  // карточка поверх экрана получает фокус: чтение с экрана и Tab начинаются с неё, а не с очереди под ней
+  const sheetOpen = !wide && selected !== null;
+  useEffect(() => {
+    if (sheetOpen) sheetRef.current?.focus();
+  }, [sheetOpen]);
 
   const occupied = occ.data?.occupied ?? 0;
   const capacity = occ.data?.capacity ?? lot?.capacity ?? 0;
@@ -275,7 +286,7 @@ export function LivePage() {
             {pending && <SkeletonRows />}
             {error && <ErrorBox error={error} />}
             {!pending && !error && list.length === 0 && (searching ? <p className="p-2 text-[13px] font-semibold text-muted">{t("live.noResults")}</p> : <EmptyState title={t("sessions.empty")} hint={camsForLot.length > 0 || !seeCameras ? t("live.emptyHint") : t("live.emptyNoCameras")} testId="queue-empty" />)}
-            <ul className="space-y-1" data-testid={searching ? "list-search" : `list-${tab}`}>
+            <ul className="space-y-1" data-queue data-testid={searching ? "list-search" : `list-${tab}`}>
               {list.map((s, i) => (
                 <SessionRow key={s.id} s={s} selected={selected === s.id} focused={focusIdx === i} onSelect={setSelected} timeZone={timeZone} now={now} highlight={searching ? query : undefined} />
               ))}
@@ -311,7 +322,7 @@ export function LivePage() {
           </div>
         ) : (
           selected && (
-            <div className="fixed inset-0 z-40 overflow-y-auto bg-ground p-3" role="dialog" aria-modal="true" aria-label={t("live.pickSession")} data-testid="session-sheet">
+            <div ref={sheetRef} tabIndex={-1} className="fixed inset-0 z-40 overflow-y-auto bg-ground p-3 focus:outline-none" role="dialog" aria-modal="true" aria-label={t("live.pickSession")} data-testid="session-sheet">
               <SessionPanel sessionId={selected} timeZone={timeZone} onClose={() => setSelected(null)} />
             </div>
           )

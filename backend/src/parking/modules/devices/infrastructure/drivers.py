@@ -270,8 +270,11 @@ class HikvisionIsapiDriver:
                 url = f"{base}/ISAPI/System/IO/outputs/{query.get('output', '1')}/trigger"
                 response = await self._request("PUT", url, host, auth, _io_body("high"))
                 if response.is_success:
-                    await self._sleep(int(query.get("pulse_ms", "500")) / 1000)  # type: ignore[operator]
-                    response = await self._request("PUT", url, host, auth, _io_body("low"))
+                    try:
+                        await self._sleep(int(query.get("pulse_ms", "500")) / 1000)  # type: ignore[operator]
+                    finally:
+                        # выход — обратно в low и при отмене паузы: иначе он остаётся замкнутым, а стрела — открытой
+                        response = await self._request("PUT", url, host, auth, _io_body("low"))
             else:
                 url = f"{base}/ISAPI/Parking/channels/{query.get('channel', '1')}/barrierGate"
                 response = await self._request("PUT", url, host, auth, _gate_body(action))

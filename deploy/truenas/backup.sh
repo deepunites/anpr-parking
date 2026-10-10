@@ -12,6 +12,7 @@ STAMP=$(date +%Y-%m-%d_%H%M)
 mkdir -p "$DIR"
 chmod 700 "$DIR"
 umask 077
+trap 'rm -f "$DIR"/*.part' EXIT  # оборванная копия не остаётся лежать и не похожа на целую
 
 compose exec -T postgres sh -c 'PGPASSWORD="$(cat /state/pg_password)" pg_dump -h 127.0.0.1 -U postgres -Fc parking' \
   > "$DIR/parking-$STAMP.dump.part"

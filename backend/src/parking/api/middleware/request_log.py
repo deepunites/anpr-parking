@@ -10,7 +10,7 @@ import time
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from parking.platform import metrics
-from parking.platform.logging import get_logger
+from parking.platform.logging import get_logger, mask_camera_key
 
 log = get_logger("http")
 
@@ -39,7 +39,8 @@ class RequestLogMiddleware:
             raise
         finally:
             route = scope.get("route")
-            path = getattr(route, "path", scope.get("path", ""))
+            # нераспознанный путь (лишний «/», опечатка в производителе) — сырой: ключ камеры в нём маскируется
+            path = getattr(route, "path", None) or mask_camera_key(str(scope.get("path", "")))
             elapsed = time.perf_counter() - started
             # лейбл route — только шаблон известного роута: сырые пути (сканеры, 404) схлопываются в <unmatched>
             metrics.http_request_duration_seconds.labels(

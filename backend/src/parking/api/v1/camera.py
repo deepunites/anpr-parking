@@ -260,7 +260,11 @@ def hikvision_input(
     )
 
 
-def dahua_input(payload: dict[str, Any], *, code: str, now: datetime, image_key: str | None) -> CameraEventInput:
+def dahua_input(
+    payload: dict[str, Any], *, code: str, now: datetime, image_key: str | None, camera_direction: str | None = None
+) -> CameraEventInput:
+    """Тип события — по назначению камеры (как у Hikvision): камера выезда видит подъезжающую машину как «Approach»,
+    и по Direction из JSON это был бы въезд → DIRECTION_MISMATCH на каждом выезде."""
     picture = payload.get("Picture") or {}
     plate = (picture.get("Plate") or {}).get("PlateNumber") or payload.get("PlateNumber") or ""
     snap = picture.get("SnapInfo") or {}
@@ -272,7 +276,11 @@ def dahua_input(payload: dict[str, Any], *, code: str, now: datetime, image_key:
         raise ValidationError("invalid Confidence or SnapTime in Dahua JSON") from exc
     return CameraEventInput(
         camera_code=code,
-        event_type="EXIT" if direction in {"leave", "out", "reverse"} else "ENTRY",
+        event_type=(
+            ("ENTRY" if camera_direction == "IN" else "EXIT")
+            if camera_direction in {"IN", "OUT"}
+            else ("EXIT" if direction in {"leave", "out", "reverse"} else "ENTRY")
+        ),
         plate_number=str(plate),
         confidence=confidence,
         event_time=event_time,
@@ -516,7 +524,13 @@ async def _dahua(
         content = ((payload.get("Picture") or {}).get("NormalPic") or {}).get("Content")
         if content:
             image_key = await container.media.store_frame(principal, base64.b64decode(content))
-        data = dahua_input(payload, code=principal.code, now=container.clock.now(), image_key=image_key)
+        data = dahua_input(
+            payload,
+            code=principal.code,
+            now=container.clock.now(),
+            image_key=image_key,
+            camera_direction=principal.direction,
+        )
     except Exception as exc:
         _journal_error(container, principal, "dahua", started, exc)
         raise

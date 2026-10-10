@@ -356,6 +356,15 @@ class DeviceAdminService:
         async with self._uow_factory(actor.tenant_id) as uow:
             repos = self._repos(uow)
             barrier = await self._barrier(uow, actor, barrier_id, for_update=True)
+            credentials = self._seal_credentials(actor.tenant_id, barrier.id, cmd.username, cmd.password)
+            moved = cmd.endpoint is not None and cmd.endpoint.strip() != barrier.endpoint
+            if moved and barrier.credentials_encrypted is not None and credentials is None:
+                # логин и пароль камеры уходят на адрес стрелы (Digest): новый адрес — только вместе с ними, иначе
+                # роль с правом правки стрел увела бы их на свой сервер «Проверить связь»
+                raise ValidationError(
+                    "camera login and password must be entered again when the address changes",
+                    code="CREDENTIALS_REQUIRED",
+                )
             barrier.update(
                 name=cmd.name,
                 endpoint=cmd.endpoint,
@@ -363,7 +372,7 @@ class DeviceAdminService:
                 auth_secret_ref=cmd.auth_secret_ref,
                 auto_close_seconds=cmd.auto_close_seconds,
                 active=cmd.active,
-                credentials_encrypted=self._seal_credentials(actor.tenant_id, barrier.id, cmd.username, cmd.password),
+                credentials_encrypted=credentials,
             )
             if cmd.endpoint is not None:
                 lot = await repos.lots.get(barrier.lot_id)

@@ -64,9 +64,11 @@ export function formFromRules(rules: Rules | null | undefined): TariffForm {
   };
 }
 
-/** Сумма в сумах → тийины; пусто → null; не число или отрицательное → undefined (ошибка формы). */
+/** Сумма в сумах → тийины; пусто → null; не число или отрицательное → undefined (ошибка формы).
+ *  «5,000» и «12,500,000» — разделитель тысяч (так пишут цены), «2500,5» — десятичная запятая. */
 function toMinor(value: string): number | null | undefined {
-  const v = value.trim().replace(/\s/g, "").replace(",", ".");
+  const compact = value.trim().replace(/\s/g, "");
+  const v = /^\d{1,3}(,\d{3})+$/.test(compact) ? compact.replace(/,/g, "") : compact.replace(",", ".");
   if (v === "") return null;
   const n = Number(v);
   if (!Number.isFinite(n) || n < 0) return undefined;
@@ -91,16 +93,19 @@ export function rulesFromForm(form: TariffForm, base?: Rules | null): Rules | nu
     overnight = { start: form.nightStart, end: form.nightEnd, price_per_hour: price };
   }
   const overrides: Record<string, Rules> = {};
+  const baseOverrides = (base?.["weekday_overrides"] ?? {}) as Record<string, { daily_max?: number | null }>;
   for (const [d, day] of form.days.entries()) {
     if (day.kind === "base") continue;
+    // суточный потолок дня экран не редактирует — сохраняем из текущей версии
+    const dayMax = typeof baseOverrides[String(d)]?.daily_max === "number" ? baseOverrides[String(d)]!.daily_max! : null;
     if (day.kind === "free") {
-      overrides[String(d)] = { free: true, price_per_hour: null, first_hour_price: null, daily_max: null };
+      overrides[String(d)] = { free: true, price_per_hour: null, first_hour_price: null, daily_max: dayMax };
       continue;
     }
     const dayPer = toMinor(day.perHour);
     const dayFirst = toMinor(day.firstHour);
-    if (dayPer === undefined || dayFirst === undefined || (dayPer === null && dayFirst === null)) return null;
-    overrides[String(d)] = { free: false, price_per_hour: dayPer, first_hour_price: dayFirst, daily_max: null };
+    if (dayPer === undefined || dayFirst === undefined || (dayPer === null && dayFirst === null && dayMax === null)) return null;
+    overrides[String(d)] = { free: false, price_per_hour: dayPer, first_hour_price: dayFirst, daily_max: dayMax };
   }
   return {
     ...(base ?? {}),
@@ -118,4 +123,28 @@ export function rulesFromForm(form: TariffForm, base?: Rules | null): Rules | nu
 /** Действует ли версия в момент at (valid_from ≤ at < valid_to). */
 export function isActiveAt(v: { valid_from: string; valid_to: string | null }, at: number): boolean {
   return Date.parse(v.valid_from) <= at && (v.valid_to === null || at < Date.parse(v.valid_to));
+}
+
+const DEFAULT_TZ = "Asia/Tashkent";
+
+/** Смещение часового пояса tz от UTC (мс) в момент at. */
+function offsetMs(tz: string, at: number): number {
+  const parts = new Intl.DateTimeFormat("en-US", { timeZone: tz, hourCycle: "h23", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" }).formatToParts(at);
+  const n = (type: string) => Number(parts.find((p) => p.type === type)?.value);
+  return Date.UTC(n("year"), n("month") - 1, n("day"), n("hour"), n("minute"), n("second")) - Math.floor(at / 1000) * 1000;
+}
+
+/** «Сейчас» для поля datetime-local — по часам площадки, а не браузера. */
+export function zonedNowInput(tz: string | undefined, now = Date.now()): string {
+  return new Date(now + offsetMs(tz || DEFAULT_TZ, now)).toISOString().slice(0, 16);
+}
+
+/** Значение поля datetime-local — это время площадки → момент в ISO (UTC); null, если поле не дата-время. */
+export function zonedInputToIso(value: string, tz: string | undefined): string | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/.exec(value);
+  if (!m) return null;
+  const zone = tz || DEFAULT_TZ;
+  const wall = Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]), Number(m[4]), Number(m[5]));
+  const first = wall - offsetMs(zone, wall);
+  return new Date(wall - offsetMs(zone, first)).toISOString(); // второй проход — на случай перехода на летнее время
 }

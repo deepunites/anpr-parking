@@ -30,11 +30,19 @@ _BEARER = re.compile(r"(?i)\bbearer\s+[A-Za-z0-9._\-]+")
 _PLATE = re.compile(
     r"(?<![A-Z0-9])\d{2}\s?[A-ZА-Я]\s?\d{3}\s?[A-ZА-Я]{2}(?![A-Z0-9])|(?<![A-Z0-9])\d{5}\s?[A-ZА-Я]{3}(?![A-Z0-9])"
 )
+# ключ камеры Hikvision/Dahua — последний сегмент пути (камеры не умеют свой заголовок): маска для всех журналов
+# (алфавит ключа — token_urlsafe: шаблон роута «{camera_key}» в метках метрик не трогается)
+CAMERA_KEY_PATH = re.compile(r"(/api/v1/camera/vendor/[a-z]+/)[A-Za-z0-9_\-]+")
 # ключи/секреты: длинные буквенно-цифровые строки без дефисов (UUID и hex-хеши с дефисами не задевает)
 _LONG_KEY = re.compile(r"\b(?=[A-Za-z0-9_]{40,}\b)(?=.*[A-Za-z])(?=.*\d)[A-Za-z0-9_]{40,}\b")
 
 
+def mask_camera_key(value: str) -> str:
+    return CAMERA_KEY_PATH.sub(r"\1***", value)
+
+
 def redact_text(value: str) -> str:
+    value = mask_camera_key(value)
     value = _JWT.sub(REDACTED, value)
     value = _BEARER.sub("Bearer " + REDACTED, value)
     value = _PLATE.sub(REDACTED, value)

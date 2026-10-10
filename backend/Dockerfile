@@ -59,4 +59,4 @@ COPY --from=builder --chown=root:root /app/alembic.ini /app/alembic.ini
 USER 10001:10001
 EXPOSE 8000
 # по умолчанию — API; воркеры переопределяют command/args в Helm (см. deploy/helm/parking/values.yaml processes.*)
-CMD ["uvicorn", "parking.api.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1", "--timeout-keep-alive", "75", "--no-server-header"]
+CMD ["uvicorn", "parking.api.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1", "--timeout-keep-alive", "75", "--no-server-header", "--no-access-log"]

@@ -18,7 +18,7 @@ env:
 
 jobs:
   deploy-staging:
-    if: github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success'
+    if: vars.PARKING_INTERNAL_INFRA == 'true' && github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success'
     runs-on: [self-hosted, staging]              # раннер внутри контура UZ (Q6): kubeconfig из Vault, доступ только к staging
     environment: staging
     steps:
@@ -34,7 +34,7 @@ jobs:
           helm upgrade --install parking deploy/helm/parking -n parking-staging --create-namespace \
             -f deploy/helm/parking/values-staging.yaml --set image.tag=${{ steps.tag.outputs.tag }} \
             --atomic --timeout 15m --history-max 10
-      - name: Смоук: camera-событие → сессия → выезд → оплата → шлагбаум → закрытие (scripts/smoke_staging.py)
+      - name: "Смоук: camera-событие → сессия → выезд → оплата → шлагбаум → закрытие (scripts/smoke_staging.py)"
         env:
           SMOKE_BASE_URL: https://staging.parking.example.uz
           SMOKE_CAMERA_KEY_ENTRY: ${{ secrets.STAGING_SMOKE_CAMERA_KEY_ENTRY }}
@@ -63,7 +63,7 @@ jobs:
 
   deploy-production:
     # только с тега vX.Y.Z, только после ручного подтверждения (environment production с required reviewers)
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: vars.PARKING_INTERNAL_INFRA == 'true' && startsWith(github.ref, 'refs/tags/v')
     runs-on: [self-hosted, production]
     environment: production
     steps:

@@ -128,6 +128,7 @@ services:
       - --workers=1
       - --timeout-keep-alive=75
       - --no-server-header
+      - --no-access-log  # журнал запросов — RequestLogMiddleware (шаблон роута); access-лог uvicorn писал бы ключ камеры из пути
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/ready', timeout=3)"]
       interval: 5s

@@ -161,3 +161,23 @@ async def test_preview_rejects_bad_rules_foreign_lots_and_cashiers(
         "/api/v1/tariff/preview", headers=cashier, json={"lot_id": str(LOT_A2), "rules": PREVIEW_RULES}
     )
     assert denied.status_code == 403
+
+
+async def test_preview_rejects_huge_steps_and_odd_input_with_422(
+    client: httpx.AsyncClient, users: dict[Role, Principal]
+) -> None:
+    """Шаг округления в миллионы минут занимал движок секундами (DoS одного воркера); кривой JSON и год 9999 — 422, не 500."""
+    admin = await bearer(client, users[Role.TENANT_ADMIN])
+    for rules, start in (
+        ({**PREVIEW_RULES, "rounding_step_minutes": 10_000_000}, None),
+        ({**PREVIEW_RULES, "grace_minutes": 100_000}, None),
+        ({**PREVIEW_RULES, "holiday": 5}, None),
+        ({**PREVIEW_RULES, "weekday_overrides": [1]}, None),
+        (PREVIEW_RULES, "9999-12-31T23:00:00+05:00"),
+        (PREVIEW_RULES, "2026-10-10T10:00:00"),  # без часового пояса
+    ):
+        body: dict[str, object] = {"lot_id": str(LOT_A2), "rules": rules}
+        if start:
+            body["start"] = start
+        response = await client.post("/api/v1/tariff/preview", headers=admin, json=body)
+        assert response.status_code == 422, (rules, start, response.text)

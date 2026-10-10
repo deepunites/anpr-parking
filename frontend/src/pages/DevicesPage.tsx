@@ -209,7 +209,7 @@ function CameraRow({ camera: c, timeZone, lang, canKeys, canWrite, onKeys }: { c
                 title: `${c.active ? t("devices.disable") : t("devices.enable")} · ${c.name}`,
                 confirm: c.active ? t("devices.disable") : t("devices.enable"),
                 danger: c.active,
-                run: (reason) => update.mutate({ cameraId: c.id, body: { active: !c.active, reason } }, { onSuccess: () => toast.ok(c.active ? t("devices.disabledToast") : t("devices.enabledToast")) }),
+                run: (reason) => update.mutateAsync({ cameraId: c.id, body: { active: !c.active, reason } }).then(() => toast.ok(c.active ? t("devices.disabledToast") : t("devices.enabledToast"))),
               })
             }
           >
@@ -239,7 +239,7 @@ function BarrierRow({ barrier: b, cameras, canOpen, canWrite }: { barrier: Barri
           </div>
         )}
       </Td>
-      <Td>{DRIVER_LABEL[b.driver] ?? b.driver}</Td>
+      <Td>{driverLabel(b.driver, t)}</Td>
       <Td mono>{b.endpoint}</Td>
       <Td>{cam ? `${cam.name} · ${cam.code}` : "—"}</Td>
       <Td>
@@ -313,7 +313,7 @@ function BarrierRow({ barrier: b, cameras, canOpen, canWrite }: { barrier: Barri
                   title: `${b.active ? t("devices.disable") : t("devices.enable")} · ${b.name}`,
                   confirm: b.active ? t("devices.disable") : t("devices.enable"),
                   danger: b.active,
-                  run: (reason) => update.mutate({ barrierId: b.id, body: { active: !b.active, reason } }, { onSuccess: () => toast.ok(b.active ? t("devices.disabledToast") : t("devices.enabledToast")) }),
+                  run: (reason) => update.mutateAsync({ barrierId: b.id, body: { active: !b.active, reason } }).then(() => toast.ok(b.active ? t("devices.disabledToast") : t("devices.enabledToast"))),
                 })
               }
             >
@@ -577,7 +577,7 @@ function CameraKeys({ camera, timeZone, lang, onIssued }: { camera: CameraOut; t
                     askReason({
                       title: `${t("devices.revoke")} · ${k.key_prefix}…`,
                       confirm: t("devices.revoke"),
-                      run: (reason) => revoke.mutate({ keyId: k.id, reason }, { onSuccess: () => toast.ok(t("devices.revokedToast")) }),
+                      run: (reason) => revoke.mutateAsync({ keyId: k.id, reason }).then(() => toast.ok(t("devices.revokedToast"))),
                     })
                   }
                 >
@@ -597,7 +597,7 @@ function CameraKeys({ camera, timeZone, lang, onIssued }: { camera: CameraOut; t
             confirm: t("devices.issueKey"),
             danger: false,
             defaultReason: t("devices.reissueReason"),
-            run: (reason) => issue.mutate({ cameraId: camera.id, label: null, reason }, { onSuccess: (k) => onIssued(k) }),
+            run: (reason) => issue.mutateAsync({ cameraId: camera.id, label: null, reason }).then((k) => onIssued(k)),
           })
         }
         data-testid="issue-key"
@@ -667,7 +667,7 @@ function BarrierForm({ lotId, cameras, onDone }: { lotId: string | null; cameras
         value={driver}
         onChange={setDriver}
         ariaLabel={t("devices.driver")}
-        options={(["HIKVISION_ISAPI", "MODBUS_TCP", "HTTP_REST"] as const).map((d) => ({ value: d, label: DRIVER_LABEL[d] }))}
+        options={(["HIKVISION_ISAPI", "MODBUS_TCP", "HTTP_REST"] as const).map((d) => ({ value: d, label: driverLabel(d, t) }))}
       />
       {driver === "HIKVISION_ISAPI" && <p className="mt-1 rounded-lg bg-surface-2 px-3 py-2 text-[12.5px] font-semibold text-ink-2">{t("devices.hikvisionHint")}</p>}
       <Label htmlFor="bar-endpoint" className="mt-3">
@@ -719,7 +719,8 @@ function BarrierForm({ lotId, cameras, onDone }: { lotId: string | null; cameras
 }
 
 type Driver = "HIKVISION_ISAPI" | "MODBUS_TCP" | "HTTP_REST";
-const DRIVER_LABEL: Record<string, string> = { HIKVISION_ISAPI: "Камера Hikvision", MODBUS_TCP: "Modbus TCP", HTTP_REST: "HTTP REST" };
+const DRIVER_LABEL: Record<string, string> = { MODBUS_TCP: "Modbus TCP", HTTP_REST: "HTTP REST" }; // технические названия
+const driverLabel = (d: string, t: (key: string) => string) => (d === "HIKVISION_ISAPI" ? t("devices.driverHikvision") : (DRIVER_LABEL[d] ?? d));
 const ENDPOINT_PLACEHOLDER: Record<Driver, string> = {
   HIKVISION_ISAPI: "http://192.168.1.64",
   MODBUS_TCP: "10.100.5.21:502?unit=1&open_coil=0&close_coil=1&pulse_ms=500",

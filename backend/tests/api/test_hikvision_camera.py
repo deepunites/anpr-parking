@@ -74,6 +74,17 @@ async def test_camera_barrier_keeps_credentials_secret(
     assert bytes(
         await owner.fetchval("SELECT credentials_encrypted FROM barrier WHERE id = $1", UUID(body["id"]))
     ) != bytes(stored)
+    moved = await client.patch(
+        f"/api/v1/barriers/{body['id']}", headers=admin, json={"endpoint": "http://10.10.1.65", **REASON}
+    )
+    # новый адрес без логина и пароля — нет: иначе сохранённые учётные данные ушли бы на чужой сервер
+    assert moved.status_code == 422 and moved.json()["error"]["code"] == "CREDENTIALS_REQUIRED"
+    moved_ok = await client.patch(
+        f"/api/v1/barriers/{body['id']}",
+        headers=admin,
+        json={"endpoint": "http://10.10.1.65", "username": "op", "password": "New-Pass-3", **REASON},
+    )
+    assert moved_ok.status_code == 200, moved_ok.text
     await owner.execute("UPDATE barrier SET active = false WHERE id = $1", UUID(body["id"]))
 
 
@@ -112,5 +123,21 @@ async def test_exit_camera_forward_motion_is_an_exit(client: httpx.AsyncClient, 
     entered = await client.post(f"/api/v1/camera/vendor/hikvision/{entry}", files=_multipart(plate))
     assert entered.status_code == 200, entered.text
     left = await client.post(f"/api/v1/camera/vendor/hikvision/{exit_key}", files=_multipart(plate))
+    assert left.status_code in {200, 202}, left.text
+    assert left.json()["status"] != "DIRECTION_MISMATCH" and left.json()["status"].startswith(("EXIT", "PAYMENT"))
+
+
+async def test_dahua_exit_camera_approach_is_an_exit(client: httpx.AsyncClient, container: Container) -> None:
+    """Dahua на выезде видит подъезжающую машину («Approach») — это выезд по назначению камеры, не DIRECTION_MISMATCH."""
+    entry = await issue_camera_key(container, CAM_A1_IN)
+    exit_key = await issue_camera_key(container, CAM_A1_OUT)
+    plate = unique_plate()
+
+    def payload(direction: str) -> dict[str, Any]:
+        return {"Picture": {"Plate": {"PlateNumber": plate, "Confidence": 95}, "SnapInfo": {"Direction": direction}}}
+
+    entered = await client.post(f"/api/v1/camera/vendor/dahua/{entry}", json=payload("Approach"))
+    assert entered.status_code == 200, entered.text
+    left = await client.post(f"/api/v1/camera/vendor/dahua/{exit_key}", json=payload("Approach"))
     assert left.status_code in {200, 202}, left.text
     assert left.json()["status"] != "DIRECTION_MISMATCH" and left.json()["status"].startswith(("EXIT", "PAYMENT"))

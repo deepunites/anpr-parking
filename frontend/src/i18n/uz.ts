@@ -15,7 +15,7 @@ export const uz: Dict = {
   soon: { title: "Bo‘lim tayyorlanmoqda", hint: "Reja v2 ning keyingi bosqichida paydo bo‘ladi" },
   devices: {
     probe: "Aloqani tekshirish", probeOk: "Aloqa bor · {ms} ms", probeFail: "Aloqa yo‘q", probeReason: "montajda aloqani tekshirish", openOk: "Shlagbaum ochildi · {ms} ms", openFailed: "Ochilmadi", openSkipped: "Buyruq o‘tkazib yuborildi — drayver o‘chirilgan", openPending: "Buyruq hali navbatda — workerlar ishlayotganini tekshiring", addCamera: "Kamera qo‘shish", addBarrier: "Shlagbaum qo‘shish", newCamera: "Yangi kamera", newBarrier: "Yangi shlagbaum", camera: "Kamera",
-    barrier: "Shlagbaum", direction: "Yo‘nalish", lastEvent: "Oxirgi hodisa", key: "Kalit", keys: "Kalitlar", driver: "Kontroller drayveri",
+    barrier: "Shlagbaum", direction: "Yo‘nalish", lastEvent: "Oxirgi hodisa", key: "Kalit", keys: "Kalitlar", driver: "Kontroller drayveri", driverHikvision: "Hikvision kamerasi",
     endpoint: "Kontroller manzili", noCameras: "Kameralar yo‘q", noCamerasHint: "Kamera qo‘shing — kalit oling, montajchi uni kameraga kiritadi va u o‘zi ulanadi.",
     noBarriers: "Shlagbaumlar yo‘q", noBarriersHint: "Shlagbaumni bog‘langan kamera hodisasi ochadi; yopishni kontroller o‘zi bajaradi.",
     camerasHint: "Kamera birinchi heartbeat yoki hodisadan so‘ng o‘zi «online» bo‘ladi.", barriersHint: "Server faqat «ochish» buyrug‘ini yuboradi; yopishni kontroller bajaradi.",

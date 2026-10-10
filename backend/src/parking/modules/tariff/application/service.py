@@ -81,6 +81,8 @@ class TariffAdminService:
         """Черновик тарифа до публикации («сколько заплатят за 30 мин, 1 ч, сутки»): тот же разбор правил и движок,
         что у оплаты, в часовом поясе площадки; ничего не записывается. Праздничный календарь не учитывается."""
         parsed = TariffRules.from_json(rules)
+        if start.tzinfo is None:  # иначе ensure_aware движка — ValueError и 500
+            raise ValidationError("start must include a timezone offset")
         if actor.allowed_lots() is not None and lot_id not in (actor.allowed_lots() or ()):
             raise NotFoundError("lot not found")
         async with self._uow_factory(actor.tenant_id) as uow:
@@ -88,10 +90,13 @@ class TariffAdminService:
         if lot is None:
             raise NotFoundError("lot not found")
         tz = ZoneInfo(lot.timezone)
-        return [
-            calculate(start, start + timedelta(minutes=m), parsed, AccessTerms(), HolidayCalendar(), tz)
-            for m in durations
-        ]
+        try:
+            return [
+                calculate(start, start + timedelta(minutes=m), parsed, AccessTerms(), HolidayCalendar(), tz)
+                for m in durations
+            ]
+        except OverflowError as exc:  # start около 9999 года
+            raise ValidationError("start is out of range") from exc
 
     async def list_plans(self, actor: CurrentUser, lot_id: UUID) -> list[TariffPlanView]:
         async with self._uow_factory(actor.tenant_id) as uow:

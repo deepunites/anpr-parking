@@ -11,10 +11,12 @@ export async function copyToClipboard(text: string): Promise<void> {
   area.style.position = "fixed";
   area.style.top = "0";
   area.style.opacity = "0";
+  area.style.fontSize = "16px"; // iOS не масштабирует страницу при фокусе
   document.body.appendChild(area);
   const previous = document.activeElement as HTMLElement | null;
   area.focus({ preventScroll: true });
   area.select();
+  area.setSelectionRange(0, text.length); // iOS Safari: select() одного мало
   try {
     // устаревший, но единственный способ скопировать на незащищённой странице
     if (!document.execCommand("copy")) throw new Error("copy command was rejected");

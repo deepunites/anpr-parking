@@ -178,7 +178,11 @@ async def test_ssrf_policy_and_missing_credentials(camera: Any) -> None:
     [
         ("http://192.168.1.64", True),
         ("192.168.1.64:8080", True),
-        ("https://cam.local?channel=2", True),
+        ("http://cam.local?channel=2", True),
+        ("https://cam.local", False),  # самоподписанный сертификат камеры — только http
+        ("http://cam.local:99999", False),  # порт вне диапазона — 422, не 500
+        ("http://[fe80::1", False),
+        ("http://cam.local?output=²", False),
         ("http://cam.local?mode=io&output=2&pulse_ms=800", True),
         ("http://admin:pass@cam.local", False),
         ("http://cam.local/ISAPI", False),
@@ -190,7 +194,21 @@ async def test_ssrf_policy_and_missing_credentials(camera: Any) -> None:
 def test_endpoint_parsing(endpoint: str, ok: bool) -> None:
     if ok:
         parsed = parse_endpoint(endpoint, driver="HIKVISION_ISAPI")
-        assert parsed.scheme in {"http", "https"} and parsed.port in {80, 443, 8080}
+        assert parsed.scheme == "http" and parsed.port in {80, 8080}
     else:
         with pytest.raises(ValidationError):
             parse_endpoint(endpoint, driver="HIKVISION_ISAPI")
+
+
+async def test_io_output_is_reset_even_if_the_pulse_is_cancelled(camera: Any) -> None:
+    """Отмена паузы между high и low (выключение воркера) не оставляет выход тревоги замкнутым, а стрелу — открытой."""
+    import asyncio
+
+    async def cancelled(_: float) -> None:
+        raise asyncio.CancelledError
+
+    driver = HikvisionIsapiDriver(resolver=StaticResolver(), box=PlainBox(), timeout=2.0, sleep=cancelled)
+    driver._client = httpx.AsyncClient(transport=ToSimulator(camera.port), timeout=2.0)
+    with pytest.raises(asyncio.CancelledError):
+        await driver.open(_barrier("http://cam-entry.local?mode=io&output=1&pulse_ms=300"), uuid4())
+    assert camera.state.io_pulses == 1 and camera.state.output == "low"

@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-import re
 from typing import Any
 
 from parking.platform.logging import redact_text, redact_value
@@ -11,9 +10,6 @@ from parking.shared.correlation import correlation_id_var, tenant_id_var, user_i
 from parking.shared.errors import DomainError
 
 _DROP_HEADERS = {"authorization", "cookie", "set-cookie", "x-camera-key", "x-auth", "auth"}
-
-
-_CAMERA_KEY_PATH = re.compile(r"(/api/v1/camera/vendor/[a-z]+/)[^/?#]+")
 
 
 def scrub_event(event: dict[str, Any], hint: dict[str, Any] | None = None) -> dict[str, Any] | None:
@@ -34,7 +30,7 @@ def scrub_event(event: dict[str, Any], hint: dict[str, Any] | None = None) -> di
         request.pop("cookies", None)
         request.pop("data", None)  # тела запросов не отправляются вовсе (max_request_body_size="never" + защита)
         if "url" in request:  # ключ камеры в пути (Hikvision/Dahua без своего заголовка) — маской
-            request["url"] = _CAMERA_KEY_PATH.sub(r"\1***", redact_text(str(request["url"])))
+            request["url"] = redact_text(str(request["url"]))  # и ключ камеры в пути (mask_camera_key)
         if "query_string" in request:
             request["query_string"] = redact_text(str(request["query_string"]))
     tags = dict(event.get("tags") or {})
@@ -65,6 +61,7 @@ def init_sentry(*, dsn: str, environment: str, release: str, traces_sample_rate:
         send_default_pii=False,
         max_request_body_size="never",
         before_send=scrub_event,  # type: ignore[arg-type]
+        before_send_transaction=scrub_event,  # type: ignore[arg-type]  # трассы тоже: request.url с ключом камеры
         integrations=[StarletteIntegration(), FastApiIntegration()],
     )
     return True

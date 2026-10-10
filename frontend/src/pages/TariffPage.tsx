@@ -5,7 +5,7 @@ import { PREVIEW_MINUTES, useLots, usePublishTariff, useTariffPlans, useTariffPr
 import { hasPermission, useAuthStore } from "@/auth/store";
 import { useLotStore } from "@/lib/lot";
 import { formatMinor, formatTime } from "@/lib/format";
-import { formFromRules, isActiveAt, rulesFromForm, type DayKind, type RoundingMode, type Rules, type TariffForm } from "@/lib/tariff";
+import { formFromRules, isActiveAt, rulesFromForm, zonedInputToIso, zonedNowInput, type DayKind, type RoundingMode, type Rules, type TariffForm } from "@/lib/tariff";
 import { cn } from "@/lib/cn";
 import { Card, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -36,13 +36,15 @@ export function TariffPage() {
 
   if (!lotId) return <EmptyState title={t("tariffPage.noLot")} />;
   const pending = plans.isPending || (plan !== null && versions.isPending);
+  // ошибка загрузки — не «тарифа нет»: иначе форма со стартовыми ценами перезапишет настоящий тариф
+  const failed = plans.isError || versions.isError;
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-baseline gap-3">
         <h1 className="text-2xl font-extrabold">{t("tariffPage.title")}</h1>
         {lot && <span className="text-[14px] font-semibold text-muted">{lot.name}</span>}
       </div>
-      {(plans.isError || versions.isError) && <ErrorBox error={plans.error ?? versions.error} />}
+      {failed && <ErrorBox error={plans.error ?? versions.error} />}
       <Card data-testid="tariff-current">
         <CardTitle right={current ? <Badge tone="green">{fmt(t("tariffPage.version"), { n: current.version })}</Badge> : undefined}>
           <span className="flex items-center gap-2">
@@ -51,7 +53,7 @@ export function TariffPage() {
         </CardTitle>
         {pending ? (
           <SkeletonRows rows={2} />
-        ) : current ? (
+        ) : failed ? null : current ? (
           <>
             <RulesSummary rules={current.rules} />
             <p className="mt-2 text-[12.5px] font-semibold text-muted">
@@ -65,7 +67,7 @@ export function TariffPage() {
         )}
       </Card>
       {canWrite ? (
-        !pending && <TariffEditor key={`${lotId}:${current?.id ?? "none"}`} lotId={lotId} planId={plan?.id ?? null} current={current} timeZone={lot?.timezone} />
+        !pending && !failed && <TariffEditor key={`${lotId}:${current?.id ?? "none"}`} lotId={lotId} planId={plan?.id ?? null} current={current} timeZone={lot?.timezone} />
       ) : (
         <p className="text-[13px] font-semibold text-muted">{t("tariffPage.readOnly")}</p>
       )}
@@ -103,40 +105,40 @@ function RulesSummary({ rules }: { rules: Rules }) {
   );
 }
 
-function localNow(): string {
-  const d = new Date(Date.now() - new Date().getTimezoneOffset() * 60_000);
-  return d.toISOString().slice(0, 16);
-}
-
 function TariffEditor({ lotId, planId, current, timeZone }: { lotId: string; planId: string | null; current: TariffVersionOut | null; timeZone: string | undefined }) {
   const { t, i18n } = useTranslation();
   const [form, setForm] = useState<TariffForm>(() => formFromRules(current?.rules));
   const [when, setWhen] = useState<"now" | "at">("now");
-  const [at, setAt] = useState(localNow);
+  const [at, setAt] = useState(() => zonedNowInput(timeZone));
   const [reason, setReason] = useState("");
   const publish = usePublishTariff();
   const rules = useMemo(() => rulesFromForm(form, current?.rules), [form, current]);
   const preview = useTariffPreview(lotId, useDeferredValue(rules));
   const set = <K extends keyof TariffForm>(key: K, value: TariffForm[K]) => setForm((f) => ({ ...f, [key]: value }));
   const setDay = (d: number, patch: Partial<TariffForm["days"][number]>) => setForm((f) => ({ ...f, days: f.days.map((x, i) => (i === d ? { ...x, ...patch } : x)) }));
-  const atValid = when === "now" || !Number.isNaN(Date.parse(at));
+  const atIso = when === "at" ? zonedInputToIso(at, timeZone) : null; // время площадки, а не браузера
+  const atValid = when === "now" || atIso !== null;
   const valid = rules !== null && reason.trim().length >= 3 && atValid;
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
     if (!valid || publish.isPending) return;
-    const validFrom = when === "now" ? new Date().toISOString() : new Date(at).toISOString();
+    const validFrom = when === "now" ? new Date().toISOString() : atIso!;
     publish.mutate(
-      { lotId, planId, rules: rules!, validFrom, reason: reason.trim() },
+      // праздничный календарь версии экран не редактирует — переносим, иначе праздничные цены перестанут действовать
+      { lotId, planId, rules: rules!, validFrom, reason: reason.trim(), holidayCalendarId: current?.holiday_calendar_id ?? null },
       { onSuccess: () => toast.ok(t("tariffPage.published")) },
     );
   };
-  const field = (id: keyof TariffForm, label: string, placeholder?: string) => (
+  const field = (id: keyof TariffForm, label: string, placeholder?: string, time = false) => (
     <div>
       <Label htmlFor={`tf-${id}`}>{label}</Label>
-      <Input id={`tf-${id}`} inputMode="decimal" className="font-mono" value={form[id] as string} placeholder={placeholder} onChange={(e) => set(id, e.target.value as never)} data-testid={`tf-${id}`} />
+      {/* время — type=time: у цифровой клавиатуры телефона нет двоеточия */}
+      <Input id={`tf-${id}`} {...(time ? { type: "time" } : { inputMode: "decimal" as const })} className="font-mono" value={form[id] as string} placeholder={placeholder} onChange={(e) => set(id, e.target.value as never)} data-testid={`tf-${id}`} />
     </div>
   );
+  // шаг текущей версии вне списка (например, 20 из API) показываем как есть, а не «1»
+  const steps = STEPS.includes(form.step) ? STEPS : [...STEPS, form.step].sort((a, b) => Number(a) - Number(b));
 
   return (
     <form onSubmit={submit} className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
@@ -150,7 +152,7 @@ function TariffEditor({ lotId, planId, current, timeZone }: { lotId: string; pla
           <div>
             <Label htmlFor="tf-step">{t("tariffPage.roundStep")}</Label>
             <Select id="tf-step" value={form.step} onChange={(e) => set("step", e.target.value)}>
-              {STEPS.map((s) => (
+              {steps.map((s) => (
                 <option key={s} value={s}>
                   {s}
                 </option>
@@ -175,8 +177,8 @@ function TariffEditor({ lotId, planId, current, timeZone }: { lotId: string; pla
           </label>
           {form.night && (
             <div className="mt-3 grid grid-cols-3 gap-3">
-              {field("nightStart", t("tariffPage.nightFrom"), "22:00")}
-              {field("nightEnd", t("tariffPage.nightTo"), "07:00")}
+              {field("nightStart", t("tariffPage.nightFrom"), "22:00", true)}
+              {field("nightEnd", t("tariffPage.nightTo"), "07:00", true)}
               {field("nightPrice", t("tariffPage.nightPrice"))}
             </div>
           )}

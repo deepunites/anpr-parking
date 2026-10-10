@@ -43,25 +43,27 @@ jobs:
     services:
       postgres:
         image: postgres:16
-        env: {POSTGRES_PASSWORD: postgres, POSTGRES_INITDB_ARGS: "--data-checksums"}
+        # тесты входят ролями app_critical/app_bulk/app_maintenance без пароля — как локальный кластер (trust)
+        env: {POSTGRES_PASSWORD: postgres, POSTGRES_HOST_AUTH_METHOD: trust, POSTGRES_INITDB_ARGS: "--data-checksums"}
         ports: ["5432:5432"]
         options: --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 3s --health-retries 20
       redis:
         image: redis:7-alpine
         ports: ["6390:6379"]
-      minio:
-        image: minio/minio:RELEASE.2025-09-07T16-13-09Z
-        env: {MINIO_ROOT_USER: ci, MINIO_ROOT_PASSWORD: "${{ secrets.CI_MINIO_PASSWORD }}"}
-        ports: ["9000:9000"]
-        options: --health-cmd "curl -f http://localhost:9000/minio/health/live" --health-interval 5s --health-retries 20
     env:
       PARKING_TEST_DSN: postgresql://postgres:postgres@127.0.0.1:5432/postgres
       PARKING_TEST_REDIS_URL: redis://127.0.0.1:6390/1
       PARKING_S3_ENDPOINT: http://127.0.0.1:9000
       PARKING_S3_ACCESS_KEY: ci
-      PARKING_S3_SECRET_KEY: ${{ secrets.CI_MINIO_PASSWORD }}
+      PARKING_S3_SECRET_KEY: ${{ secrets.CI_MINIO_PASSWORD || 'ci-ephemeral-minio' }}
     steps:
       - uses: actions/checkout@v4
+      - name: MinIO (minio/minio убран с Docker Hub и Quay — сборка Chainguard; сервису нельзя передать «server»)
+        run: |
+          docker run -d --name minio -p 9000:9000 -e MINIO_ROOT_USER="$PARKING_S3_ACCESS_KEY" \
+            -e MINIO_ROOT_PASSWORD="$PARKING_S3_SECRET_KEY" cgr.dev/chainguard/minio:latest server /tmp/data
+          for _ in $(seq 1 30); do curl -fs http://127.0.0.1:9000/minio/health/live && exit 0; sleep 2; done
+          docker logs minio; exit 1
       - uses: astral-sh/setup-uv@v6
         with: {version: "${{ env.UV_VERSION }}", enable-cache: true}
       - run: uv sync --frozen
@@ -83,7 +85,7 @@ jobs:
     services:
       postgres:
         image: postgres:16
-        env: {POSTGRES_PASSWORD: postgres}
+        env: {POSTGRES_PASSWORD: postgres, POSTGRES_HOST_AUTH_METHOD: trust}  # роли тестов — без пароля
         ports: ["5432:5432"]
         options: --health-cmd "pg_isready -U postgres" --health-interval 5s --health-retries 20
       redis:
@@ -111,10 +113,11 @@ jobs:
       - run: uv sync --frozen && uv run python scripts/export_openapi.py
         working-directory: backend
       - name: Базовая спецификация (main)
-        run: git show origin/main:docs/openapi.json > /tmp/openapi-base.json || cp docs/openapi.json /tmp/openapi-base.json
+        run: git show origin/main:docs/openapi.json > openapi-base.json || cp docs/openapi.json openapi-base.json
+      # action — Docker-контейнер: видит рабочую папку, но не /tmp раннера
       - uses: oasdiff/oasdiff-action/breaking@v0.0.21
-        with: {base: /tmp/openapi-base.json, revision: docs/openapi.json, fail-on: ERR}
-      - run: uv run python scripts/openapi_compat.py /tmp/openapi-base.json ../docs/openapi.json
+        with: {base: openapi-base.json, revision: docs/openapi.json, fail-on: ERR}
+      - run: uv run python scripts/openapi_compat.py ../openapi-base.json ../docs/openapi.json
         working-directory: backend
 
   migration-check:
@@ -156,7 +159,7 @@ jobs:
         with: {version: "${{ env.UV_VERSION }}"}
       - uses: actions/setup-node@v4
         with: {node-version: 24}
-      - uses: aquasecurity/setup-trivy@v0.2.3
+      - uses: aquasecurity/setup-trivy@v0.2.6
       - uses: gitleaks/gitleaks-action@v2
         env: {GITLEAKS_CONFIG: security/gitleaks.toml}
       - run: uv sync --frozen
@@ -211,7 +214,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with: {name: images, path: /tmp}
-      - uses: aquasecurity/setup-trivy@v0.2.3
+      - uses: aquasecurity/setup-trivy@v0.2.6
       - run: |
           for img in backend frontend; do
             trivy image --input /tmp/$img.tar --scanners vuln,secret --severity CRITICAL,HIGH --ignore-unfixed --exit-code 1 --format table
@@ -223,7 +226,7 @@ jobs:
   push:
     runs-on: ubuntu-24.04
     needs: [build, container-scan]
-    if: github.event_name == 'push'
+    if: github.event_name == 'push' && vars.PARKING_INTERNAL_INFRA == 'true'  # Harbor и подпись — только во внутреннем контуре
     steps:
       - uses: actions/download-artifact@v4
         with: {name: images, path: /tmp}
@@ -250,7 +253,8 @@ jobs:
           helm lint deploy/helm/parking --strict -f deploy/helm/parking/values-staging.yaml --set image.tag=0.0.0-0000000
           helm template parking deploy/helm/parking --set image.tag=0.0.0-0000000 > /tmp/prod.yaml
           helm template parking deploy/helm/parking -f deploy/helm/parking/values-staging.yaml --set image.tag=0.0.0-0000000 > /tmp/staging.yaml
-      - uses: yannh/kubeconform@v0.7.0
+      - name: kubeconform (бинарник релиза; action yannh/kubeconform больше не собирается)
+        run: curl -fsSL https://github.com/yannh/kubeconform/releases/download/v0.8.0/kubeconform-linux-amd64.tar.gz | sudo tar xz -C /usr/local/bin kubeconform
       - run: kubeconform -strict -ignore-missing-schemas -summary /tmp/prod.yaml /tmp/staging.yaml
       - uses: opentofu/setup-opentofu@v1
         with: {tofu_version: 1.10.6}

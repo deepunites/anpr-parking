@@ -46,9 +46,10 @@ goto fail
 
 :compose_ok
 rem --- Адрес этого компьютера в сети площадки: по нему заходят телефоны кассиров и шлют события камеры.
-rem     Виртуальные адаптеры (WSL, Hyper-V, Docker) и автоадреса 169.254.* пропускаем.
+rem     Берём адрес интерфейса маршрута по умолчанию (VirtualBox, VMware, VPN, точка доступа Windows не мешают);
+rem     нет маршрута - первый адрес без виртуальных адаптеров (WSL, Hyper-V, Docker) и автоадресов 169.254.*.
 set "LAN_IPS="
-for /f "usebackq delims=" %%i in (`powershell -NoProfile -Command "$a = @(Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue).Where({ $_.IPAddress -notlike '127.*' -and $_.IPAddress -notlike '169.254.*' -and $_.InterfaceAlias -notlike 'vEthernet*' -and $_.InterfaceAlias -notlike '*WSL*' -and $_.InterfaceAlias -notlike '*Docker*' -and $_.InterfaceAlias -notlike '*Loopback*' }); ($a.IPAddress) -join ' '"`) do set "LAN_IPS=%%i"
+for /f "usebackq delims=" %%i in (`powershell -NoProfile -Command "$r = @(Find-NetRoute -RemoteIPAddress 1.1.1.1 -ErrorAction SilentlyContinue).Where({ $_.IPAddress }); if ($r.Count) { $r[0].IPAddress } else { $a = @(Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue).Where({ $_.IPAddress -notlike '127.*' -and $_.IPAddress -notlike '169.254.*' -and $_.InterfaceAlias -notlike 'vEthernet*' -and $_.InterfaceAlias -notlike '*WSL*' -and $_.InterfaceAlias -notlike '*Docker*' -and $_.InterfaceAlias -notlike '*Loopback*' }); ($a.IPAddress) -join ' ' }"`) do set "LAN_IPS=%%i"
 set "PARKING_LAN_URL="
 for %%a in (%LAN_IPS%) do if not defined PARKING_LAN_URL set "PARKING_LAN_URL=http://%%a:%PARKING_HTTP_PORT%"
 

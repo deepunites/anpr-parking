@@ -540,13 +540,19 @@ export function useTariffPreview(lotId: string | null, rules: Record<string, unk
 export function usePublishTariff() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({ lotId, planId, rules, validFrom, reason }: { lotId: string; planId: string | null; rules: Record<string, unknown>; validFrom: string; reason: string }) => {
+    mutationFn: async ({ lotId, planId, rules, validFrom, reason, holidayCalendarId }: { lotId: string; planId: string | null; rules: Record<string, unknown>; validFrom: string; reason: string; holidayCalendarId: string | null }) => {
       const id =
         planId ??
         unwrap(await api.POST("/api/v1/lots/{lot_id}/tariff-plans", { params: { path: { lot_id: lotId } }, body: { code: "BASE", name: "Основной", is_default: true, reason } })).id;
-      return unwrap(await api.POST("/api/v1/tariff-plans/{plan_id}/versions", { params: { path: { plan_id: id } }, body: { rules, valid_from: validFrom, reason } }));
+      return unwrap(
+        await api.POST("/api/v1/tariff-plans/{plan_id}/versions", {
+          params: { path: { plan_id: id } },
+          body: { rules, valid_from: validFrom, reason, holiday_calendar_id: holidayCalendarId },
+        }),
+      );
     },
-    onSuccess: (_d, v) => {
+    // и после ошибки: план мог создаться, а версия — нет; иначе повтор упрётся в «plan code already exists»
+    onSettled: (_d, _e, v) => {
       void qc.invalidateQueries({ queryKey: ["tariff-plans", v.lotId] });
       void qc.invalidateQueries({ queryKey: ["tariff-versions"] });
     },

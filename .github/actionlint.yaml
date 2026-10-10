@@ -1,0 +1,3 @@
+# Свои раннеры внутреннего контура (cd/nightly/drift): метки staging и production
+self-hosted-runner:
+  labels: [staging, production]

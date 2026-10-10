@@ -6,6 +6,7 @@ on:
 permissions: {contents: read, issues: write}
 jobs:
   plan:
+    if: vars.PARKING_INTERNAL_INFRA == 'true'  # свои раннеры staging/production — только во внутреннем контуре; на GitHub не висит в очереди
     strategy:
       matrix: {env: [staging, production]}
     runs-on: [self-hosted, "${{ matrix.env }}"]

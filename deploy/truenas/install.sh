@@ -35,8 +35,7 @@ if [ -z "${ready:-}" ]; then
   fail "Веб не ответил за 3 минуты — пришлите журнал выше."
 fi
 
-compose exec -T api cat /state/credentials.txt > "$HERE/LOGINS.txt"
-chmod 600 "$HERE/LOGINS.txt"
+(umask 077 && compose exec -T api cat /state/credentials.txt > "$HERE/LOGINS.txt")  # пароли — сразу 600
 cat "$HERE/LOGINS.txt"
 echo "============================================================"
 echo "  Готово."

@@ -441,7 +441,7 @@ def _sandbox_input(body: SandboxRequest, principal: CameraPrincipal, now: dateti
     except ValueError as exc:
         raise ValidationError("malformed JSON") from exc
     if body.vendor == "dahua":
-        return dahua_input(data, code=principal.code, now=now, image_key=None)
+        return dahua_input(data, code=principal.code, now=now, image_key=None, camera_direction=principal.direction)
     try:
         return CameraEventInput(
             camera_code=str(data["camera_code"]),

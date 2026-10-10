@@ -83,9 +83,9 @@ def test_validation_messages() -> None:
         AccessTerms(kind=AccessKind.WHITELIST, discount_percent=-1)
     AccessTerms(kind=AccessKind.WHITELIST, discount_percent=100)  # границы включительно
     AccessTerms(kind=AccessKind.WHITELIST, discount_percent=0)
-    with pytest.raises(ValidationError, match="grace_minutes must be >= 0 and rounding_step_minutes >= 1"):
+    with pytest.raises(ValidationError, match=r"grace_minutes must be 0\.\.1440 and rounding_step_minutes 1\.\.1440"):
         rules(grace_minutes=-1)
-    with pytest.raises(ValidationError, match="grace_minutes must be >= 0 and rounding_step_minutes >= 1"):
+    with pytest.raises(ValidationError, match=r"grace_minutes must be 0\.\.1440 and rounding_step_minutes 1\.\.1440"):
         rules(rounding_step_minutes=0)
     with pytest.raises(ValidationError, match="tariff prices must be non-negative"):
         rules(daily_max=Money(-1))
