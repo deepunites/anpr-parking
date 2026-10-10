@@ -132,7 +132,7 @@ def test_bucket_lifecycle_policy_applied(minio: str) -> None:
         [
             sys.executable,
             "-c",
-            "import sys; sys.path.insert(0, 'scripts'); import minio_dev; print(minio_dev.mc(9000, 'ilm', 'rule', 'ls', 'local/anpr-media').stdout)",
+            "import sys; sys.path.insert(0, 'scripts'); import minio_dev; r = minio_dev.mc(9000, 'ilm', 'rule', 'ls', 'local/anpr-media'); print(r.stdout); print(r.stderr, file=sys.stderr)",
         ],
         capture_output=True,
         text=True,
@@ -140,4 +140,4 @@ def test_bucket_lifecycle_policy_applied(minio: str) -> None:
         check=True,
     )
     print("\nGATE mc ilm rule ls local/anpr-media:\n" + result.stdout)
-    assert "90" in result.stdout and "Enabled" in result.stdout
+    assert "90" in result.stdout and "Enabled" in result.stdout, result.stderr

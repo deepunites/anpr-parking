@@ -23,6 +23,9 @@ BUCKET = "anpr-media"
 
 
 def credentials() -> tuple[str, str]:
+    access, secret = os.environ.get("PARKING_S3_ACCESS_KEY"), os.environ.get("PARKING_S3_SECRET_KEY")
+    if access and secret:  # CI: ключи из окружения — одни и те же у MinIO, mc и настроек тестов, без гонки за .env.dev
+        return access, secret
     env: dict[str, str] = {}
     if ENV_FILE.exists():
         for line in ENV_FILE.read_text().splitlines():
@@ -90,19 +93,12 @@ def setup(port: int, bucket: str = BUCKET) -> str:
     mc(port, "version", "enable", f"local/{bucket}")
     existing = mc(port, "ilm", "rule", "ls", f"local/{bucket}", "--json")
     if '"Days":90' not in existing.stdout.replace(" ", ""):
-        mc(
-            port,
-            "ilm",
-            "rule",
-            "add",
-            "--expire-days",
-            "90",
-            "--noncurrent-expire-days",
-            "7",
-            "--id",
-            "expire-90d",
-            f"local/{bucket}",
+        # у mc нет флага --id (на неизвестный флаг он печатает справку и ничего не создаёт) — ID правилу даёт MinIO
+        added = mc(
+            port, "ilm", "rule", "add", "--expire-days", "90", "--noncurrent-expire-days", "7", f"local/{bucket}"
         )
+        if added.returncode != 0:
+            raise SystemExit(f"mc ilm rule add: {added.stderr.strip()[-500:]}")
     return mc(port, "ilm", "rule", "ls", f"local/{bucket}").stdout
 
 

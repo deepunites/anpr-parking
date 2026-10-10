@@ -66,6 +66,9 @@ def _dev_env() -> dict[str, str]:
             if "=" in line and not line.startswith("#"):
                 k, _, v = line.partition("=")
                 env[k.strip()] = v.strip()
+    for name in ("PARKING_S3_ACCESS_KEY", "PARKING_S3_SECRET_KEY"):  # CI задаёт их окружением (как minio_dev.py)
+        if os.environ.get(name):
+            env[name] = os.environ[name]
     return env
 
 
