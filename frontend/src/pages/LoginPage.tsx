@@ -49,7 +49,7 @@ export function LoginPage() {
             <Label htmlFor="password">{t("login.password")}</Label>
             <Input id="password" type="password" autoComplete="current-password" required value={password} onChange={(e) => setPassword(e.target.value)} />
           </div>
-          <ErrorBox error={error} />
+          <ErrorBox error={error} messages={{ UNAUTHENTICATED: t("login.wrongCredentials") }} />
           <Button type="submit" size="lg" className="w-full" disabled={busy} data-testid="login-submit">
             {t("login.submit")}
           </Button>

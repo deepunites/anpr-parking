@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import os
+import secrets
 from pathlib import Path
 from typing import Any
 
@@ -21,6 +22,7 @@ PG_DB = os.environ.get("STAND_PG_DB", "parking")
 REDIS_URL = os.environ.get("STAND_REDIS_URL", "redis://redis:6379/0")
 S3_ENDPOINT = os.environ.get("STAND_S3_ENDPOINT", "http://minio:9000")
 APP_ROLES = ("app_critical", "app_bulk", "app_maintenance")
+_ALPHABET = "abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789"  # без похожих 0/O, 1/l/I
 
 
 def stand_profile() -> str:
@@ -30,6 +32,11 @@ def stand_profile() -> str:
         return PROFILE_FILE.read_text(encoding="utf-8").strip() or "demo"
     except FileNotFoundError:
         return "demo"
+
+
+def new_password() -> str:
+    """Временный пароль сотрудника: 3 группы по 4 знака, без похожих символов — диктуется по телефону."""
+    return "-".join("".join(secrets.choice(_ALPHABET) for _ in range(4)) for _ in range(3))
 
 
 def load_secrets() -> dict[str, Any]:

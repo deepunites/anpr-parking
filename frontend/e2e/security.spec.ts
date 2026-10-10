@@ -25,3 +25,14 @@ test("security headers and no inline scripts in the built app", async ({ request
   await expect(page.getByTestId("login-submit")).toBeVisible();
   expect(violations).toEqual([]);
 });
+
+/** Неверный пароль на входе — «Неверный логин или пароль», а не общее «Нужно войти заново»; e-mail несуществующий,
+    чтобы неудача не легла в счётчик блокировки входа тестовых пользователей. */
+test("wrong password on login is reported as wrong credentials", async ({ page }) => {
+  await page.goto("/login");
+  await page.locator("#email").fill("nobody@e2e.invalid");
+  await page.locator("#password").fill("not-the-password");
+  await page.getByTestId("login-submit").click();
+  await expect(page.getByTestId("error-box")).toContainText("Неверный логин или пароль");
+  await expect(page.getByTestId("error-box")).not.toContainText("Нужно войти заново");
+});

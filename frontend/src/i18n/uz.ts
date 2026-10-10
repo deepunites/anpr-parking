@@ -36,7 +36,7 @@ export const uz: Dict = {
     hintHttp: "HTTP REST uchun manzil http:// yoki https:// bilan boshlanadi", hintBlocked: "Mahalliy va xizmat manzillari taqiqlangan",
     hintPrivate: "Xususiy manzil: maydon uchun ruxsat etilgan bo‘lsa, tekshiruvdan o‘tadi", hintPublic: "Ommaviy manzil: tekshiruvdan o‘tadi",
   },
-  login: { noAccount: "Hisobingiz yo‘qmi?", signup: "Parkovkani ulash", haveAccount: "Hisobingiz bormi?", title: "Kirish", email: "E-mail yoki telefon", password: "Parol", submit: "Kirish", failed: "Kirish amalga oshmadi" },
+  login: { wrongCredentials: "Login yoki parol noto‘g‘ri", noAccount: "Hisobingiz yo‘qmi?", signup: "Parkovkani ulash", haveAccount: "Hisobingiz bormi?", title: "Kirish", email: "E-mail yoki telefon", password: "Parol", submit: "Kirish", failed: "Kirish amalga oshmadi" },
   conn: { open: "Onlayn", connecting: "Ulanmoqda…", reconnecting: "Qayta ulanmoqda…", closed: "Aloqa yo‘q", stale: "Ma’lumotlar eskirgan bo‘lishi mumkin" },
   occupancy: { title: "Bandlik", capacity: "Sig‘im", occupied: "Band", free: "Bo‘sh" },
   live: {

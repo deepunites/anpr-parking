@@ -39,7 +39,7 @@ export const ru = {
     barrierCreated: "Стрела добавлена", hintHttp: "Для HTTP REST адрес начинается с http:// или https://", hintBlocked: "Локальные и служебные адреса запрещены",
     hintPrivate: "Приватный адрес: пройдёт проверку, если подсеть входит в разрешённые для площадки", hintPublic: "Публичный адрес: пройдёт проверку",
   },
-  login: { noAccount: "Нет аккаунта?", signup: "Подключить парковку", haveAccount: "Уже есть аккаунт?", title: "Вход", email: "E-mail или телефон", password: "Пароль", submit: "Войти", failed: "Не удалось войти" },
+  login: { wrongCredentials: "Неверный логин или пароль", noAccount: "Нет аккаунта?", signup: "Подключить парковку", haveAccount: "Уже есть аккаунт?", title: "Вход", email: "E-mail или телефон", password: "Пароль", submit: "Войти", failed: "Не удалось войти" },
   conn: { open: "Онлайн", connecting: "Подключение…", reconnecting: "Переподключение…", closed: "Нет соединения", stale: "Данные могут быть устаревшими" },
   occupancy: { title: "Занятость", capacity: "Вместимость", occupied: "Занято", free: "Свободно" },
   live: {

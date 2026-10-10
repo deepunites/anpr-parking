@@ -5,14 +5,15 @@ import { ApiError } from "@/api/errors";
 import { Button } from "@/components/ui/button";
 import { copyToClipboard } from "@/lib/clipboard";
 
-/** Ошибка API: человеческий текст по error.code + correlation_id с копированием одной кнопкой (§6). */
-export function ErrorBox({ error, onRetry }: { error: unknown; onRetry?: () => void }) {
+/** Ошибка API: человеческий текст по error.code + correlation_id с копированием одной кнопкой (§6). `messages` —
+    текст для кода в контексте экрана (на входе UNAUTHENTICATED — «неверный пароль», а не «войдите заново»). */
+export function ErrorBox({ error, onRetry, messages }: { error: unknown; onRetry?: () => void; messages?: Record<string, string> }) {
   const { t } = useTranslation();
   const [copied, setCopied] = useState(false);
   if (!error) return null;
   const apiError = error instanceof ApiError ? error : null;
   const code = apiError?.code ?? "REQUEST_FAILED";
-  const human = t(`error.codes.${code}`, { defaultValue: apiError?.message ?? String(error) });
+  const human = messages?.[code] ?? t(`error.codes.${code}`, { defaultValue: apiError?.message ?? String(error) });
   const correlation = apiError?.correlationId;
   // v2 этап 3: лимит тарифа — человеческая строка с цифрами и путь к смене тарифа вместо JSON деталей
   const planIssue = code === "PLAN_LIMIT_REACHED" || code === "PLAN_TOO_SMALL" || code === "SUBSCRIPTION_INACTIVE";

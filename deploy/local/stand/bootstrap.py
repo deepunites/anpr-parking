@@ -12,7 +12,6 @@ import hashlib
 import ipaddress
 import json
 import os
-import secrets
 import socket
 import subprocess
 import sys
@@ -32,6 +31,7 @@ from standlib import (
     S3_ENDPOINT,
     STATE,
     load_secrets,
+    new_password,
     stand_env,
     stand_profile,
     superuser_dsn,
@@ -78,7 +78,6 @@ SITE_TARIFF = {  # стартовые цены — меняются в разд�
     "rounding_step_minutes": 15,
     "daily_max": 3_000_000,
 }
-_ALPHABET = "abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789"  # без похожих 0/O, 1/l/I
 
 
 def _relay_network() -> str | None:
@@ -92,10 +91,6 @@ def _relay_network() -> str | None:
 
 def log(msg: str) -> None:
     print(f"[init] {msg}", flush=True)
-
-
-def new_password() -> str:
-    return "-".join("".join(secrets.choice(_ALPHABET) for _ in range(4)) for _ in range(3))
 
 
 async def wait_postgres(dsn: str, limit_seconds: float = 180) -> None:
