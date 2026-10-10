@@ -25,3 +25,32 @@ test("probe and test-open a Modbus relay barrier", async ({ page, request }) => 
   expect(after.opens).toBe(before.opens + 1);
   expect(["OPENING", "OPEN"]).toContain(after.boom);
 });
+
+/** Стрела на реле камеры Hikvision: сохранённый пароль камеры не показывается, поэтому адрес и пароль меняются
+    формой «Адрес и пароль» — без пароля адрес не сменить (сервер иначе ответит CREDENTIALS_REQUIRED). Стрела без
+    камеры: события общей площадки A1 её не открывают. */
+test("Hikvision barrier: address and camera password are changed together", async ({ page }) => {
+  const s = stack();
+  await loginUi(page, s.users["tenant_admin"]!);
+  await page.getByTestId("lot-select").selectOption("00000000-0000-4000-8000-00000000a101");
+  await page.goto("/devices?tab=barriers");
+  const name = `Реле камеры ${Date.now() % 100000}`;
+  await page.getByRole("button", { name: "Добавить стрелу" }).click();
+  const create = page.getByTestId("barrier-form");
+  await create.getByTestId("barrier-name").fill(name);
+  await create.locator("#bar-camera").selectOption("");
+  await create.getByTestId("barrier-endpoint").fill("http://10.10.1.64");
+  await create.getByTestId("barrier-password").fill("e2e-camera-pass");
+  await create.getByTestId("barrier-submit").click();
+  const row = page.getByTestId("barrier-row").filter({ hasText: name });
+  await expect(row).toContainText("http://10.10.1.64");
+
+  await row.getByTestId("barrier-access").click();
+  const form = page.getByTestId("barrier-access-form");
+  await form.getByTestId("access-endpoint").fill("http://10.10.1.65");
+  await expect(form.getByTestId("access-submit")).toBeDisabled(); // без пароля — нельзя
+  await form.getByTestId("access-password").fill("e2e-camera-pass-2");
+  await form.getByTestId("access-submit").click();
+  await expect(form).toBeHidden();
+  await expect(row).toContainText("http://10.10.1.65");
+});

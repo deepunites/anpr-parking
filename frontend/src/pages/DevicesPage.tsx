@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Copy, KeyRound, Plug, Plus, Power, Zap } from "lucide-react";
+import { Copy, KeyRound, Pencil, Plug, Plus, Power, Zap } from "lucide-react";
 import { fmt, useTranslation } from "@/i18n";
 import { useAuth } from "@/auth/useAuth";
 import { hasPermission } from "@/auth/store";
@@ -229,6 +229,7 @@ function BarrierRow({ barrier: b, cameras, canOpen, canWrite }: { barrier: Barri
   const [reasonDialog, askReason] = useReasonDialog(update.isPending);
   const cam = cameras.find((c) => c.id === b.camera_id);
   const [result, setResult] = useState<{ ok: boolean; text: string } | null>(null);
+  const [editing, setEditing] = useState(false);
   return (
     <tr data-testid="barrier-row" data-name={b.name}>
       <Td>
@@ -302,6 +303,24 @@ function BarrierRow({ barrier: b, cameras, canOpen, canWrite }: { barrier: Barri
             </Button>
           )}
           {reasonDialog}
+          {canWrite && b.driver === "HIKVISION_ISAPI" && (
+            <>
+              <Button variant="ghost" size="sm" aria-label={t("devices.editAccess")} title={t("devices.editAccess")} data-testid="barrier-access" onClick={() => setEditing(true)}>
+                <Pencil className="h-4 w-4" aria-hidden="true" />
+              </Button>
+              <Dialog open={editing} onClose={() => setEditing(false)} title={`${t("devices.editAccess")} · ${b.name}`}>
+                {editing && (
+                  <BarrierAccessForm
+                    barrier={b}
+                    onDone={() => {
+                      setEditing(false);
+                      setResult(null);
+                    }}
+                  />
+                )}
+              </Dialog>
+            </>
+          )}
           {canWrite && (
             <Button
               variant="ghost"
@@ -712,6 +731,65 @@ function BarrierForm({ lotId, cameras, onDone }: { lotId: string | null; cameras
             (driver === "HIKVISION_ISAPI" && (!username.trim() || !password))
           } data-testid="barrier-submit">
           {t("devices.addBarrier")}
+        </Button>
+      </div>
+    </form>
+  );
+}
+
+/* Адрес камеры и её логин/пароль у стрелы Hikvision: пароль не возвращается сервером, поэтому меняется только вводом
+   заново; сервер требует пароль и при смене адреса (иначе сохранённый пароль ушёл бы на чужое устройство). */
+function BarrierAccessForm({ barrier, onDone }: { barrier: BarrierOut; onDone: () => void }) {
+  const { t } = useTranslation();
+  const update = useUpdateBarrier();
+  const [endpoint, setEndpoint] = useState(barrier.endpoint);
+  const [username, setUsername] = useState("admin");
+  const [password, setPassword] = useState("");
+  const hint = endpointHint(endpoint, "HIKVISION_ISAPI", t);
+  return (
+    <form
+      className="flex flex-col gap-1"
+      onSubmit={(e) => {
+        e.preventDefault();
+        const changed = endpoint.trim() !== barrier.endpoint;
+        update.mutate(
+          {
+            barrierId: barrier.id,
+            body: { ...(changed ? { endpoint: endpoint.trim() } : {}), username: username.trim(), password, reason: t("devices.accessReason") },
+          },
+          {
+            onSuccess: () => {
+              toast.ok(t("devices.accessSaved"));
+              onDone();
+            },
+          },
+        );
+      }}
+      data-testid="barrier-access-form"
+    >
+      <p className="rounded-lg bg-surface-2 px-3 py-2 text-[12.5px] font-semibold text-ink-2">{t("devices.accessHint")}</p>
+      <Label htmlFor="acc-endpoint" className="mt-3">
+        {t("devices.endpoint")}
+      </Label>
+      <Input id="acc-endpoint" className="font-mono" value={endpoint} onChange={(e) => setEndpoint(e.target.value)} placeholder={ENDPOINT_PLACEHOLDER.HIKVISION_ISAPI} data-testid="access-endpoint" />
+      {hint && <div className={`mt-1 rounded-lg px-3 py-2 text-[12.5px] font-semibold ${hint.ok ? "bg-ok-soft text-ok-ink" : "bg-warn-soft text-warn-ink"}`}>{hint.text}</div>}
+      <div className="mt-3 grid gap-3 sm:grid-cols-2">
+        <div>
+          <Label htmlFor="acc-user">{t("devices.cameraLogin")}</Label>
+          <Input id="acc-user" value={username} onChange={(e) => setUsername(e.target.value)} autoComplete="off" data-testid="access-username" />
+        </div>
+        <div>
+          <Label htmlFor="acc-pass">{t("devices.cameraPassword")}</Label>
+          <Input id="acc-pass" type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="new-password" data-testid="access-password" autoFocus />
+        </div>
+      </div>
+      {update.isError && <ErrorBox error={update.error} />}
+      <div className="mt-4 flex gap-2">
+        <Button type="button" variant="ghost" onClick={onDone}>
+          {t("common.cancel")}
+        </Button>
+        <Button type="submit" className="ml-auto" disabled={update.isPending || endpoint.trim().length < 3 || !username.trim() || !password} data-testid="access-submit">
+          {update.isPending ? "…" : t("devices.accessSave")}
         </Button>
       </div>
     </form>
