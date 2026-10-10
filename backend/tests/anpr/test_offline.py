@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import sys
 from datetime import UTC, datetime
 from typing import Any
@@ -11,6 +12,7 @@ from uuid import uuid4
 
 import asyncpg
 import httpx
+import pytest
 
 from parking.modules.anpr.application.ingest import IngestService
 from parking.modules.anpr.domain.event import CameraEvent, EventType, idempotency_key
@@ -65,6 +67,11 @@ async def _drain(container: Container, replayer: Any, *, attempts: int = 60) -> 
     return reports
 
 
+# pg_ctl останавливает только локальный кластер (backend/.pgdata); внешний (PARKING_TEST_DSN — сервис CI) тест
+# остановить не может, и события честно доходят до БД (200 вместо 202). Гейт оффлайна — на локальном кластере.
+@pytest.mark.skipif(
+    bool(os.environ.get("PARKING_TEST_DSN")), reason="нужен локальный кластер, который тест останавливает"
+)
 async def test_pg_down_queues_events_and_replay_has_no_duplicates(
     client: httpx.AsyncClient, container: Container, entry_key: str, owner: asyncpg.Connection, clean_streams: None
 ) -> None:
@@ -129,8 +136,6 @@ async def test_pg_down_queues_events_and_replay_has_no_duplicates(
 
 
 def _dsn() -> str:
-    import os
-
     from tests.conftest import PGDATA
 
     external = os.environ.get("PARKING_TEST_DSN")
