@@ -37,6 +37,7 @@ SKIP_DIRS = [
     "frontend/dist",
     "frontend/test-results",
     "backend/.security-scan",
+    ".claude",  # локальные worktree агентов (в .gitignore, в CI их нет)
 ]
 
 
@@ -93,10 +94,16 @@ def npm_audit() -> tuple[bool, str]:
     return blocking == 0, ", ".join(f"{k}={v}" for k, v in counts.items())
 
 
+def tool(name: str) -> Path:
+    """Бинарник сканера: из PATH (CI ставит его action'ом) или из ~/.local/tools (локально)."""
+    found = shutil.which(name)
+    return Path(found) if found else TOOLS / name
+
+
 def trivy() -> tuple[bool, str]:
-    binary = TOOLS / "trivy"
+    binary = tool("trivy")
     if not binary.exists():
-        return False, f"нет {binary}"
+        return False, f"нет trivy в PATH и {binary}"
     r = run(
         [
             str(binary),
@@ -127,9 +134,9 @@ def trivy() -> tuple[bool, str]:
 
 
 def gitleaks() -> tuple[bool, str]:
-    binary = TOOLS / "gitleaks"
+    binary = tool("gitleaks")
     if not binary.exists():
-        return False, f"нет {binary}"
+        return False, f"нет gitleaks в PATH и {binary}"
     r = run(
         [str(binary), "dir", ".", "--config", "security/gitleaks.toml", "--no-banner", "--redact", "--exit-code", "1"]
     )

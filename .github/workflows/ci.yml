@@ -54,7 +54,7 @@ jobs:
       PARKING_TEST_DSN: postgresql://postgres:postgres@127.0.0.1:5432/postgres
       PARKING_TEST_REDIS_URL: redis://127.0.0.1:6390/1
       PARKING_S3_ENDPOINT: http://127.0.0.1:9000
-      PARKING_S3_ACCESS_KEY: ci
+      PARKING_S3_ACCESS_KEY: ci-minio  # MinIO требует логин от 3 символов
       PARKING_S3_SECRET_KEY: ${{ secrets.CI_MINIO_PASSWORD || 'ci-ephemeral-minio' }}
     steps:
       - uses: actions/checkout@v4
