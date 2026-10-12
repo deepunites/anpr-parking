@@ -83,6 +83,7 @@ export const uz: Dict = {
   lots: {
     add: "Maydon qo‘shish", new: "Yangi maydon", lot: "Maydon", capacity: "Joylar", whenFull: "To‘lganda", unknownExit: "Kirishsiz chiqish",
     allow: "Qabul qilish", deny: "Rad etish", openFree: "Bepul chiqarish", toReview: "Ko‘rib chiqishga", edit: "O‘zgartirish", empty: "Maydonlar yo‘q", emptyHint: "Maydon yarating: joylar soni, manzil, rejimlar.",
+    plates: "Panelda raqamlar", platesMasked: "Niqob bilan (01A***AA)", platesFull: "To‘liq", platesHint: "«To‘liq» — raqamni to‘liq shu maydonchaning egasi, administratori, menejeri, operatori va kassiri ko‘radi; dasturchi va kuzatuvchi — niqobni. Jurnallar, hodisalar va vebxuklarda raqam doim yashirin. O‘zgartirish — sabab bilan, audit jurnalida.",
     namePh: "Chilonzor, savdo markazi", codeHint: "Hisobotlar uchun qisqa kod.", timezone: "Vaqt mintaqasi", address: "Manzil", addressPh: "Bunyodkor ko‘chasi, 1",
     whenFullHint: "«Qabul qilish» — kirish ochiladi; «Rad etish» — ENTRY_DENIED_FULL.", unknownExitHint: "Kirish bo‘lmagan chiqish: operator hal qiladi yoki bepul chiqariladi.",
     grace: "Greys, daq", lateWindow: "Hodisa oynasi, soat", maxSession: "Maks. turish, soat", cidrs: "Kontroller tarmoqlari",

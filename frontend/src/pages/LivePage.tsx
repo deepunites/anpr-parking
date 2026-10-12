@@ -149,6 +149,13 @@ export function LivePage() {
     () => (searching ? (search.data ?? []) : tab === "review" ? reviewForLot : (active.data?.items ?? [])),
     [searching, search.data, tab, reviewForLot, active.data],
   );
+  // в событиях живой ленты номер всегда маской (события хранятся в БД, открытого номера там нет) — если площадка
+  // показывает номера полностью, берём номер сессии из уже загруженных списков
+  const platesById = useMemo(() => {
+    const byId = new Map<string, string>();
+    for (const s of [...(active.data?.items ?? []), ...reviewForLot, ...(search.data ?? [])]) if (s.plate) byId.set(s.id, s.plate);
+    return byId;
+  }, [active.data, reviewForLot, search.data]);
   const pending = searching ? search.isPending : tab === "review" ? review.isPending : active.isPending;
   const error = searching ? search.error : tab === "review" ? review.error : active.error;
 
@@ -353,7 +360,7 @@ export function LivePage() {
           <ul className="max-h-[32rem] flex-1 space-y-0.5 overflow-auto" aria-live="polite" data-testid="feed">
             {feed.map((item) => {
               const sid = typeof item.data?.["session_id"] === "string" ? item.data["session_id"] : null;
-              const plate = typeof item.data?.["plate"] === "string" ? item.data["plate"] : null;
+              const plate = (sid && platesById.get(sid)) || (typeof item.data?.["plate"] === "string" ? item.data["plate"] : null);
               return (
                 <li key={item.event_id ?? item.receivedAt} className="flex items-center gap-2 border-b border-line-2 px-1 py-1.5 text-[13px] font-semibold text-ink-2" data-type={item.type}>
                   <FeedIcon item={item} />

@@ -25,6 +25,7 @@ class LotPolicies:
     exit_inferred_after_minutes: int = 60
     late_event_window_hours: int = 24
     barrier_cidr_allowlist: tuple[str, ...] = ()
+    show_full_plates: bool = False  # сотрудникам площадки — номер целиком, а не маской (решение клиента, в аудите)
 
     def validate(self) -> None:
         checks = [

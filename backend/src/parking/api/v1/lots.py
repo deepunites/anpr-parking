@@ -25,6 +25,7 @@ class PoliciesModel(BaseModel):
     exit_inferred_after_minutes: int = Field(default=60, ge=1, le=1440)
     late_event_window_hours: int = Field(default=24, ge=1, le=168)
     barrier_cidr_allowlist: list[str] = Field(default_factory=list)
+    show_full_plates: bool = False  # сотрудникам — номер целиком, а не маской 01A***AA
 
     def to_domain(self) -> LotPolicies:
         return LotPolicies(
@@ -36,6 +37,7 @@ class PoliciesModel(BaseModel):
             exit_inferred_after_minutes=self.exit_inferred_after_minutes,
             late_event_window_hours=self.late_event_window_hours,
             barrier_cidr_allowlist=tuple(self.barrier_cidr_allowlist),
+            show_full_plates=self.show_full_plates,
         )
 
     @classmethod
@@ -49,6 +51,7 @@ class PoliciesModel(BaseModel):
             exit_inferred_after_minutes=p.exit_inferred_after_minutes,
             late_event_window_hours=p.late_event_window_hours,
             barrier_cidr_allowlist=list(p.barrier_cidr_allowlist),
+            show_full_plates=p.show_full_plates,
         )
 
 

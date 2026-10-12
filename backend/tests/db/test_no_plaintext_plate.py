@@ -16,8 +16,10 @@ ALLOWED = {
     ("manual_correction", "corrected_plate_encrypted"),
     ("deletion_request", "subject_plate_hash"),
     ("event_journal", "plate_masked"),  # v2 этап 6: только маска «01A***AA» (CHECK на «*» в БД), восстановить нельзя
+    ("parking_lot", "show_full_plates"),  # политика площадки (да/нет): показывать ли сотрудникам номер целиком
 }
 MASKED = {("event_journal", "plate_masked")}
+FLAGS = {("parking_lot", "show_full_plates")}  # не номер, а флаг — только boolean
 
 
 async def test_only_hashed_or_encrypted_plate_columns_exist(owner: asyncpg.Connection) -> None:
@@ -37,6 +39,8 @@ async def test_only_hashed_or_encrypted_plate_columns_exist(owner: asyncpg.Conne
     for r in rows:
         if r["column_name"].endswith(("_hash", "_encrypted")):
             assert r["data_type"] == "bytea", (r["table_name"], r["column_name"], r["data_type"])
+        if (r["table_name"], r["column_name"]) in FLAGS:
+            assert r["data_type"] == "boolean", (r["table_name"], r["column_name"], r["data_type"])
     assert ("vehicle", "plate_format") in found  # формат — не ПДн
     masked_checked = await owner.fetchval(
         "SELECT count(*) FROM pg_constraint WHERE conrelid = 'event_journal'::regclass AND contype = 'c' "

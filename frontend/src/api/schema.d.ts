@@ -3527,6 +3527,11 @@ export interface components {
              * @default 5
              */
             reentry_window_minutes: number;
+            /**
+             * Show Full Plates
+             * @default false
+             */
+            show_full_plates: boolean;
             /** @default MANUAL_REVIEW */
             unknown_exit_policy: components["schemas"]["UnknownExitPolicy"];
         };

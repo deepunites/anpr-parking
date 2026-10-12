@@ -27,6 +27,7 @@ const DEFAULT_POLICIES: PoliciesModel = {
   max_session_hours: 72,
   reentry_window_minutes: 5,
   barrier_cidr_allowlist: [],
+  show_full_plates: false,
 };
 
 function suggestCode(name: string, existing: LotOut[]): string {
@@ -244,6 +245,19 @@ function LotForm({ lot, existing, onDone }: { lot?: LotOut; existing: LotOut[]; 
         ]}
       />
       <p className="text-[12px] font-semibold text-muted">{t("lots.unknownExitHint")}</p>
+      <Eyebrow className="mt-3 mb-1">{t("lots.plates")}</Eyebrow>
+      <div data-testid="lot-plates">
+        <Segmented
+          value={policies.show_full_plates ? "full" : "masked"}
+          onChange={(v) => set("show_full_plates", v === "full")}
+          ariaLabel={t("lots.plates")}
+          options={[
+            { value: "masked", label: t("lots.platesMasked") },
+            { value: "full", label: t("lots.platesFull") },
+          ]}
+        />
+      </div>
+      <p className="text-[12px] font-semibold text-muted">{t("lots.platesHint")}</p>
       <div className="mt-3 grid grid-cols-3 gap-2">
         <div>
           <Label htmlFor="p-grace">{t("lots.grace")}</Label>

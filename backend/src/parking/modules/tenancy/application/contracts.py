@@ -28,6 +28,10 @@ class LotDirectory(Protocol):
         """Внутри tenant-контекста UoW."""
         ...
 
+    async def shows_full_plates(self) -> bool:
+        """Хоть на одной действующей площадке клиента включены полные номера (экраны без площадки — карточка машины)."""
+        ...
+
 
 @dataclass(frozen=True, slots=True)
 class LotView:

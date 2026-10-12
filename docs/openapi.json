@@ -4596,6 +4596,11 @@
             "title": "Reentry Window Minutes",
             "type": "integer"
           },
+          "show_full_plates": {
+            "default": false,
+            "title": "Show Full Plates",
+            "type": "boolean"
+          },
           "unknown_exit_policy": {
             "$ref": "#/components/schemas/UnknownExitPolicy",
             "default": "MANUAL_REVIEW"

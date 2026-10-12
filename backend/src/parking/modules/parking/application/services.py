@@ -16,7 +16,7 @@ from parking.modules.access.application.contracts import AccessDecision, AccessK
 from parking.modules.audit.application.contracts import ActorType, AuditEntry, AuditWriter
 from parking.modules.billing.application.contracts import PaymentObligations, PaymentStatus, PrivilegeMethod
 from parking.modules.devices.application.contracts import BarrierCommands, CommandSource, CommandState
-from parking.modules.identity.application.contracts import CurrentUser
+from parking.modules.identity.application.contracts import CurrentUser, Role
 from parking.modules.parking.application.contracts import (
     EntryCommand,
     EntryResult,
@@ -83,6 +83,11 @@ class ParkingRepositories:
 
 UowFactory = Callable[[UUID | None], UnitOfWork]
 ReposFactory = Callable[[UnitOfWork], ParkingRepositories]
+
+
+# Роли, которые работают с машинами на площадке: политика площадки «полные номера» открывает номер только им —
+# разработчику интеграций, наблюдателю и ролям платформы по-прежнему маска (PRIVACY §1, минимизация).
+FULL_PLATE_ROLES = frozenset({Role.OWNER, Role.TENANT_ADMIN, Role.MANAGER, Role.OPERATOR, Role.CASHIER})
 
 
 def _key(*parts: object) -> bytes:
@@ -765,7 +770,8 @@ class ParkingService:
                             },
                         )
                     )
-            return SessionView.of(session, new_plate.masked)
+            full = await self._full_plates(repos, actor, session.lot_id)
+            return SessionView.of(session, new_plate.value if full else new_plate.masked)
 
     async def confirm_entry(self, actor: CurrentUser, session_id: UUID, *, reason: str) -> SessionView:
         async with self._uow_factory(actor.tenant_id) as uow:
@@ -888,6 +894,7 @@ class ParkingService:
             repos = self._repos(uow)
             found = await repos.vehicles.attributes_by_hashes(hashes)
             sessions = await repos.sessions.list_by_plate_hashes(hashes, limit=5)
+            full = await self._full_plates(repos, actor, None)
         allowed = actor.allowed_lots()
         active = next(
             (s for s in sessions if s.occupies_space and (allowed is None or s.lot_id in allowed)),
@@ -895,7 +902,7 @@ class ParkingService:
         )
         attrs = next(iter(found.values()), VehicleAttributes(make=None, model=None, color=None))
         return VehicleView(
-            plate=plate.masked,
+            plate=plate.value if full else plate.masked,
             plate_format=plate.format.value,
             known=bool(found),
             attributes=_attrs_view(attrs),
@@ -936,8 +943,12 @@ class ParkingService:
                     payload={"make": attrs.make, "model": attrs.model, "color": attrs.color},
                 )
             )
+            full = await self._full_plates(repos, actor, None)
         return VehicleView(
-            plate=plate.masked, plate_format=plate.format.value, known=True, attributes=_attrs_view(attrs)
+            plate=plate.value if full else plate.masked,
+            plate_format=plate.format.value,
+            known=True,
+            attributes=_attrs_view(attrs),
         )
 
     async def set_session_vehicle_attributes(
@@ -975,7 +986,7 @@ class ParkingService:
                     payload={"make": attrs.make, "model": attrs.model, "color": attrs.color},
                 )
             )
-            return await self._view(repos, actor.tenant_id, session)
+            return await self._view(repos, actor, session)
 
     async def vehicle_attributes_for(
         self, actor: CurrentUser, plates: list[PlateNumber]
@@ -1056,14 +1067,14 @@ class ParkingService:
             self._emit_session_events(uow, session)
             if session.occupies_space:
                 uow.after_commit(lambda: self._occupancy.adjust(cmd.lot_id, +1))
-            return await self._view(repos, actor.tenant_id, session)
+            return await self._view(repos, actor, session)
 
     # ---------------------------------------------------------------- QUERIES
     async def get_session(self, actor: CurrentUser, session_id: UUID) -> SessionView:
         async with self._uow_factory(actor.tenant_id) as uow:
             repos = self._repos(uow)
             session = await self._load_scoped(repos, actor, session_id)
-            return await self._view(repos, actor.tenant_id, session)
+            return await self._view(repos, actor, session)
 
     async def list_sessions(
         self,
@@ -1080,7 +1091,7 @@ class ParkingService:
             if await repos.lots.get(lot_id) is None:
                 raise NotFoundError("lot not found")  # чужой tenant: существование площадки не подтверждается
             sessions = await repos.sessions.list_by_lot(lot_id, statuses=statuses, limit=limit, after=after)
-            return [await self._view(repos, actor.tenant_id, s) for s in sessions]
+            return [await self._view(repos, actor, s) for s in sessions]
 
     async def find_by_plate(self, actor: CurrentUser, plate: PlateNumber, *, limit: int = 20) -> list[SessionView]:
         async with self._uow_factory(actor.tenant_id) as uow:
@@ -1088,13 +1099,17 @@ class ParkingService:
             hashes = self._crypto.hashes_for_lookup(actor.tenant_id, plate)
             allowed = actor.allowed_lots()
             sessions = await repos.sessions.list_by_plate_hashes(hashes, limit=limit)
-            return [SessionView.of(s, plate.masked) for s in sessions if allowed is None or s.lot_id in allowed]
+            return [
+                SessionView.of(s, plate.value if await self._full_plates(repos, actor, s.lot_id) else plate.masked)
+                for s in sessions
+                if allowed is None or s.lot_id in allowed
+            ]
 
     async def review_queue(self, actor: CurrentUser, *, limit: int = 100) -> list[SessionView]:
         async with self._uow_factory(actor.tenant_id) as uow:
             repos = self._repos(uow)
             sessions = await repos.sessions.review_queue(actor.allowed_lots(), limit=limit)
-            return [await self._view(repos, actor.tenant_id, s) for s in sessions]
+            return [await self._view(repos, actor, s) for s in sessions]
 
     async def get_saga_by_id(self, tenant_id: UUID, saga_id: UUID) -> SagaView:
         async with self._uow_factory(tenant_id) as uow:
@@ -1150,16 +1165,27 @@ class ParkingService:
         self._check_scope(actor, session.lot_id)
         return session
 
-    async def _view(self, repos: ParkingRepositories, tenant_id: UUID, session: ParkingSession) -> SessionView:
-        """Сессия + маскированный номер + марка/модель/цвет одним запросом к vehicle."""
+    async def _view(self, repos: ParkingRepositories, actor: CurrentUser, session: ParkingSession) -> SessionView:
+        """Сессия + номер (маской или целиком — политика площадки) + марка/модель/цвет одним запросом к vehicle."""
         card = await repos.vehicles.card(session.vehicle_id)
         if card is None:
             return SessionView.of(session)
         try:
-            plate: str | None = self._crypto.decrypt(tenant_id, card.plate_encrypted, card.enc_key_version).masked
+            number = self._crypto.decrypt(actor.tenant_id, card.plate_encrypted, card.enc_key_version)
         except Exception:
-            plate = None
-        return SessionView.of(session, plate, _attrs_view(card.attributes))
+            return SessionView.of(session, None, _attrs_view(card.attributes))
+        full = await self._full_plates(repos, actor, session.lot_id)
+        return SessionView.of(session, number.value if full else number.masked, _attrs_view(card.attributes))
+
+    @staticmethod
+    async def _full_plates(repos: ParkingRepositories, actor: CurrentUser, lot_id: UUID | None) -> bool:
+        """Номер целиком: роль работает с машинами и площадка (без площадки — любая площадка клиента) это разрешает."""
+        if actor.role not in FULL_PLATE_ROLES:
+            return False
+        if lot_id is None:
+            return await repos.lots.shows_full_plates()
+        lot = await repos.lots.get(lot_id)
+        return lot is not None and lot.policies.show_full_plates
 
     async def _masked_plate(self, repos: ParkingRepositories, tenant_id: UUID, vehicle_id: UUID) -> str | None:
         stored = await repos.vehicles.plate_encrypted(vehicle_id)

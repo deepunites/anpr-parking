@@ -21,7 +21,7 @@ from parking.platform.logging import configure_logging, get_logger
 from parking.platform.sentry import scrub_event
 from parking.platform.tracing import span
 from parking.shared.plate import PlateNumber
-from tests.db.test_no_plaintext_plate import ALLOWED, MASKED
+from tests.db.test_no_plaintext_plate import ALLOWED, FLAGS, MASKED
 
 PLATE = "01A123BC"
 
@@ -37,7 +37,9 @@ async def test_database_has_no_plaintext_plate_column(owner: asyncpg.Connection)
     )
     for r in rows:
         assert (r["t"], r["col"]) in ALLOWED, f"неизвестная колонка с номером: {r['t']}.{r['col']}"
-        if r["col"] != "plate_format" and (r["t"], r["col"]) not in MASKED:
+        if (r["t"], r["col"]) in FLAGS:
+            assert r["typ"] == "boolean", dict(r)  # политика площадки, а не номер
+        elif r["col"] != "plate_format" and (r["t"], r["col"]) not in MASKED:
             assert r["typ"] == "bytea" and r["col"].endswith(("_hash", "_encrypted")), dict(r)
 
 
