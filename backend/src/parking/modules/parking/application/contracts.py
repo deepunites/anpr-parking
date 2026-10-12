@@ -136,6 +136,16 @@ class ParkingCommands(Protocol):
 
 
 @dataclass(frozen=True, slots=True)
+class StaleSessionsResult:
+    """Массовое закрытие старых сессий площадки: сколько нашлось, закрыто и пропущено (идёт выезд или оплата)."""
+
+    older_than: datetime
+    found: int
+    closed: int
+    skipped_in_exit: int
+
+
+@dataclass(frozen=True, slots=True)
 class SessionView:
     id: UUID
     lot_id: UUID

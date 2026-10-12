@@ -111,6 +111,19 @@ class ReasonRequest(BaseModel):
     reason: Reason
 
 
+class CloseStaleRequest(BaseModel):
+    older_than_hours: int = Field(ge=1, le=24 * 365)
+    dry_run: bool | None = None  # true — только посчитать, ничего не закрывать
+    reason: str | None = Field(default=None, max_length=500)
+
+
+class CloseStaleOut(BaseModel):
+    older_than: datetime
+    found: int
+    closed: int
+    skipped_in_exit: int
+
+
 class CorrectPlateRequest(BaseModel):
     plate: str = Field(min_length=4, max_length=20)
     reason: Reason
@@ -341,6 +354,30 @@ async def close_session(
     container: Annotated[Container, Depends(get_container)],
 ) -> SessionOut:
     return SessionOut.of(await container.parking.close_manual(user, session_id, reason=body.reason))
+
+
+@router.post(
+    "/lots/{lot_id}/sessions/close-stale",
+    response_model=CloseStaleOut,
+    openapi_extra=permission_extra(Permission.SESSIONS_WRITE),
+)
+async def close_stale_sessions(
+    lot_id: UUID,
+    body: CloseStaleRequest,
+    user: Annotated[CurrentUser, Depends(require(Permission.SESSIONS_WRITE))],
+    container: Annotated[Container, Depends(get_container)],
+) -> CloseStaleOut:
+    """Машины уехали незамеченными: незакрытые сессии площадки старше N часов → «Осиротевшая» (без начисления).
+    dry_run — сколько закроет; иначе обязательна причина (аудит по каждой сессии)."""
+    result = await container.parking.close_stale(
+        user, lot_id, older_than_hours=body.older_than_hours, reason=body.reason, dry_run=bool(body.dry_run)
+    )
+    return CloseStaleOut(
+        older_than=result.older_than,
+        found=result.found,
+        closed=result.closed,
+        skipped_in_exit=result.skipped_in_exit,
+    )
 
 
 @router.post(

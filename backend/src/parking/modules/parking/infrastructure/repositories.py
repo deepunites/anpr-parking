@@ -303,6 +303,16 @@ class SqlSessionRepository:
         )
         return {r.camera: int(r.n) for r in rows}
 
+    async def open_in_lot_before(self, lot_id: UUID, older_than: datetime, *, limit: int) -> list[ParkingSession]:
+        rows = await self._s.execute(
+            text(
+                f"SELECT {_SESSION_COLUMNS} FROM parking_session s WHERE s.lot_id = :lot "
+                "AND s.status IN ('ACTIVE', 'MANUAL_REVIEW') AND s.entry_time < :older ORDER BY s.entry_time LIMIT :limit"
+            ),
+            {"lot": lot_id, "older": older_than, "limit": limit},
+        )
+        return [_session(r) for r in rows]
+
     async def stale_active(self, older_than: datetime, *, limit: int) -> list[ParkingSession]:
         rows = await self._s.execute(
             text(

@@ -77,6 +77,28 @@ export function useLotSessions(lotId: string | null, statuses: SessionStatus[], 
   });
 }
 
+/** Подсчёт незакрытых сессий старше N часов (dry_run — ничего не меняет) и само закрытие (→ «Осиротевшая»). */
+export function useStaleSessions(lotId: string | null, hours: number) {
+  return useQuery({
+    queryKey: ["stale-sessions", lotId ?? "", hours] as const,
+    queryFn: async () =>
+      unwrap(await api.POST("/api/v1/lots/{lot_id}/sessions/close-stale", { params: { path: { lot_id: lotId ?? "" } }, body: { older_than_hours: hours, dry_run: true } })),
+    enabled: lotId !== null && Number.isInteger(hours) && hours >= 1,
+    retry: false,
+  });
+}
+
+export function useCloseStaleSessions(lotId: string | null) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ hours, reason }: { hours: number; reason: string }) =>
+      unwrap(await api.POST("/api/v1/lots/{lot_id}/sessions/close-stale", { params: { path: { lot_id: lotId ?? "" } }, body: { older_than_hours: hours, reason } })),
+    onSuccess: () => {
+      for (const key of [["sessions"], ["occupancy"], ["stale-sessions"], keys.review]) void qc.invalidateQueries({ queryKey: key });
+    },
+  });
+}
+
 export function useReviewQueue(enabled = true) {
   return useQuery({ queryKey: keys.review, queryFn: async () => unwrap(await api.GET("/api/v1/sessions/review-queue")), enabled, refetchInterval: 30_000 });
 }

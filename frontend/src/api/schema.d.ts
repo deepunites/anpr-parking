@@ -932,6 +932,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/lots/{lot_id}/sessions/close-stale": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Close Stale Sessions
+         * @description Машины уехали незамеченными: незакрытые сессии площадки старше N часов → «Осиротевшая» (без начисления).
+         *     dry_run — сколько закроет; иначе обязательна причина (аудит по каждой сессии).
+         */
+        post: operations["close_stale_sessions_api_v1_lots__lot_id__sessions_close_stale_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/lots/{lot_id}/tariff-plans": {
         parameters: {
             query?: never;
@@ -2357,6 +2378,29 @@ export interface components {
             counted_cash: number;
             /** Notes */
             notes?: string | null;
+        };
+        /** CloseStaleOut */
+        CloseStaleOut: {
+            /** Closed */
+            closed: number;
+            /** Found */
+            found: number;
+            /**
+             * Older Than
+             * Format: date-time
+             */
+            older_than: string;
+            /** Skipped In Exit */
+            skipped_in_exit: number;
+        };
+        /** CloseStaleRequest */
+        CloseStaleRequest: {
+            /** Dry Run */
+            dry_run?: boolean | null;
+            /** Older Than Hours */
+            older_than_hours: number;
+            /** Reason */
+            reason?: string | null;
         };
         /** CommandOut */
         CommandOut: {
@@ -6580,6 +6624,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Page_SessionOut_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    close_stale_sessions_api_v1_lots__lot_id__sessions_close_stale_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                lot_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CloseStaleRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CloseStaleOut"];
                 };
             };
             /** @description Validation Error */

@@ -1068,6 +1068,73 @@
         "title": "CloseShiftRequest",
         "type": "object"
       },
+      "CloseStaleOut": {
+        "properties": {
+          "closed": {
+            "title": "Closed",
+            "type": "integer"
+          },
+          "found": {
+            "title": "Found",
+            "type": "integer"
+          },
+          "older_than": {
+            "format": "date-time",
+            "title": "Older Than",
+            "type": "string"
+          },
+          "skipped_in_exit": {
+            "title": "Skipped In Exit",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "older_than",
+          "found",
+          "closed",
+          "skipped_in_exit"
+        ],
+        "title": "CloseStaleOut",
+        "type": "object"
+      },
+      "CloseStaleRequest": {
+        "properties": {
+          "dry_run": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dry Run"
+          },
+          "older_than_hours": {
+            "maximum": 8760.0,
+            "minimum": 1.0,
+            "title": "Older Than Hours",
+            "type": "integer"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "required": [
+          "older_than_hours"
+        ],
+        "title": "CloseStaleRequest",
+        "type": "object"
+      },
       "CommandOut": {
         "properties": {
           "barrier_id": {
@@ -11282,6 +11349,68 @@
         ],
         "x-permission": [
           "sessions:read"
+        ]
+      }
+    },
+    "/api/v1/lots/{lot_id}/sessions/close-stale": {
+      "post": {
+        "description": "Машины уехали незамеченными: незакрытые сессии площадки старше N часов → «Осиротевшая» (без начисления).\ndry_run — сколько закроет; иначе обязательна причина (аудит по каждой сессии).",
+        "operationId": "close_stale_sessions_api_v1_lots__lot_id__sessions_close_stale_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "lot_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Lot Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CloseStaleRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CloseStaleOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Close Stale Sessions",
+        "tags": [
+          "sessions"
+        ],
+        "x-permission": [
+          "sessions:write"
         ]
       }
     },

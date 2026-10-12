@@ -157,6 +157,10 @@ SAMPLES: dict[tuple[str, str], dict[str, Any]] = {
         "path": {"session_id": "{session_id}"},
         "json": {"reason": "rbac contract test"},
     },
+    ("POST", "/api/v1/lots/{lot_id}/sessions/close-stale"): {
+        "path": {"lot_id": str(LOT_A1)},
+        "json": {"older_than_hours": 8760, "dry_run": True},  # только подсчёт: общий стенд не трогаем
+    },
     ("POST", "/api/v1/sessions/{session_id}/orphan"): {
         "path": {"session_id": "{session_id}"},
         "json": {"reason": "rbac contract test"},

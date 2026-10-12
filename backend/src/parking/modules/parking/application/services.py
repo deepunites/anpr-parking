@@ -28,6 +28,7 @@ from parking.modules.parking.application.contracts import (
     ManualEntryCommand,
     SagaView,
     SessionView,
+    StaleSessionsResult,
     VehicleAttributesView,
     VehicleView,
 )
@@ -88,6 +89,9 @@ ReposFactory = Callable[[UnitOfWork], ParkingRepositories]
 # Роли, которые работают с машинами на площадке: политика площадки «полные номера» открывает номер только им —
 # разработчику интеграций, наблюдателю и ролям платформы по-прежнему маска (PRIVACY §1, минимизация).
 FULL_PLATE_ROLES = frozenset({Role.OWNER, Role.TENANT_ADMIN, Role.MANAGER, Role.OPERATOR, Role.CASHIER})
+STALE_BATCH = 2000  # за один раз; больше — повторить (останутся самые новые из старых)
+# closed_reason сессии — код (varchar(40), как REENTRY / MAX_SESSION_HOURS); причину сотрудника хранит аудит (I-15)
+CLOSED_MANUAL, ORPHANED_MANUAL, STALE_MANUAL = "CLOSED_MANUAL", "ORPHANED_MANUAL", "STALE_MANUAL"
 
 
 def _key(*parts: object) -> bytes:
@@ -832,7 +836,7 @@ class ParkingService:
                 billing_minutes=ParkingSession.minutes_between(session.entry_time, now),
                 exit_kind=ExitKind.MANUAL,
                 tariff_plan_version_id=None,
-                reason=reason,
+                reason=CLOSED_MANUAL,
             )
             await repos.sessions.save(session)
             if saga is not None:
@@ -852,13 +856,53 @@ class ParkingService:
             repos = self._repos(uow)
             session = await self._load_scoped(repos, actor, session_id, for_update=True)
             occupied = session.occupies_space
-            session.mark_orphan(reason)
+            session.mark_orphan(ORPHANED_MANUAL)
             await repos.sessions.save(session)
             await self._audit(repos, actor, "SESSION_ORPHANED_MANUAL", session, reason)
             self._emit_session_events(uow, session)
             if occupied:
                 uow.after_commit(lambda: self._occupancy.adjust(session.lot_id, -1))
             return SessionView.of(session)
+
+    async def close_stale(
+        self, actor: CurrentUser, lot_id: UUID, *, older_than_hours: int, reason: str | None, dry_run: bool
+    ) -> StaleSessionsResult:
+        """Машины уехали незамеченными (не было камеры выезда, камера не работала): незакрытые сессии площадки с въездом
+        раньше N часов назад → ORPHAN, как у автоматической чистки по max_session_hours — без начисления, место
+        освобождается. Сессии, по которым идёт выезд или оплата, не трогаются. dry_run — только посчитать (кассир видит,
+        сколько закроет); иначе — с причиной, в аудите по каждой сессии (I-15)."""
+        if not 1 <= older_than_hours <= 24 * 365:
+            raise ValidationError("older_than_hours must be between 1 and 8760")
+        if not dry_run and not (reason and reason.strip()):
+            raise ValidationError("reason is required", code="REASON_REQUIRED")
+        self._check_scope(actor, lot_id)
+        cutoff = self._clock.now() - timedelta(hours=older_than_hours)
+        async with self._uow_factory(actor.tenant_id) as uow:
+            repos = self._repos(uow)
+            if await repos.lots.get(lot_id) is None:
+                raise NotFoundError("lot not found")
+            stale = await repos.sessions.open_in_lot_before(lot_id, cutoff, limit=STALE_BATCH)
+            if dry_run:
+                return StaleSessionsResult(older_than=cutoff, found=len(stale), closed=0, skipped_in_exit=0)
+            assert reason is not None
+            closed = skipped = 0
+            for candidate in stale:
+                session = await repos.sessions.get_for_update(candidate.id)
+                if session is None or session.is_terminal:
+                    continue
+                if await repos.sagas.active_for_session(session.id) is not None:
+                    skipped += 1  # машина как раз выезжает — сессию закроет сага
+                    continue
+                occupied = session.occupies_space
+                session.mark_orphan(STALE_MANUAL)
+                await repos.sessions.save(session)
+                await self._audit(repos, actor, "SESSION_ORPHANED_MANUAL", session, reason.strip())
+                self._emit_session_events(uow, session)
+                if occupied:
+                    uow.after_commit(self._decrement(session.lot_id))
+                closed += 1
+        log.info("stale_sessions_closed", lot_id=str(lot_id), closed=closed, skipped=skipped, hours=older_than_hours)
+        return StaleSessionsResult(older_than=cutoff, found=len(stale), closed=closed, skipped_in_exit=skipped)
 
     async def sweep_stale(self, tenant_id: UUID, *, limit: int = 500) -> int:
         """Сессии старше lot.max_session_hours → ORPHAN (A-07). Вызывается джобом по каждому tenant."""

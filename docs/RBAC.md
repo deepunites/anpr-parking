@@ -108,6 +108,7 @@ API-ключ внешней системы получает только пра�
 | GET | `/api/v1/lots/{lot_id}/map` | `sessions:read` |
 | GET | `/api/v1/lots/{lot_id}/occupancy` | `sessions:read` |
 | GET | `/api/v1/lots/{lot_id}/sessions` | `sessions:read` |
+| POST | `/api/v1/lots/{lot_id}/sessions/close-stale` | `sessions:write` |
 | GET | `/api/v1/lots/{lot_id}/tariff-plans` | `tariff:read` |
 | POST | `/api/v1/lots/{lot_id}/tariff-plans` | `tariff:write` |
 | POST | `/api/v1/payments/webhook/{provider}` | публичный |
