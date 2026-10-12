@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Copy, KeyRound, Pencil, Plug, Plus, Power, Zap } from "lucide-react";
+import { Copy, KeyRound, Pencil, Plug, Plus, Power, SlidersHorizontal, Zap } from "lucide-react";
 import { fmt, useTranslation } from "@/i18n";
 import { useAuth } from "@/auth/useAuth";
 import { hasPermission } from "@/auth/store";
@@ -174,6 +174,7 @@ function CameraRow({ camera: c, timeZone, lang, canKeys, canWrite, onKeys }: { c
   const { t } = useTranslation();
   const update = useUpdateCamera();
   const [reasonDialog, askReason] = useReasonDialog(update.isPending);
+  const [tuning, setTuning] = useState(false);
   const st = cameraStatus(c, t);
   return (
     <tr data-testid="camera-row" data-code={c.code}>
@@ -198,6 +199,16 @@ function CameraRow({ camera: c, timeZone, lang, canKeys, canWrite, onKeys }: { c
       </Td>
       <Td>
         {reasonDialog}
+        {canWrite && (
+          <>
+            <Button variant="ghost" size="sm" title={t("devices.thresholds")} aria-label={t("devices.thresholds")} data-testid="camera-thresholds" onClick={() => setTuning(true)}>
+              <SlidersHorizontal className="h-4 w-4" aria-hidden="true" />
+            </Button>
+            <Dialog open={tuning} onClose={() => setTuning(false)} title={`${t("devices.thresholds")} · ${c.name}`}>
+              {tuning && <CameraThresholdsForm camera={c} onDone={() => setTuning(false)} />}
+            </Dialog>
+          </>
+        )}
         {canWrite && (
           <Button
             variant="ghost"
@@ -731,6 +742,59 @@ function BarrierForm({ lotId, cameras, onDone }: { lotId: string | null; cameras
             (driver === "HIKVISION_ISAPI" && (!username.trim() || !password))
           } data-testid="barrier-submit">
           {t("devices.addBarrier")}
+        </Button>
+      </div>
+    </form>
+  );
+}
+
+/* Пороги уверенности распознавания камеры: от «Уверенности» — автоматически, от «На разбор ниже» — ручная проверка,
+   ниже — отказ. Ночью и под землёй камеры дают 60–80, а по умолчанию 80/60 — тогда каждый въезд уходит кассиру. */
+function CameraThresholdsForm({ camera, onDone }: { camera: CameraOut; onDone: () => void }) {
+  const { t } = useTranslation();
+  const update = useUpdateCamera();
+  const [min, setMin] = useState(String(camera.confidence_min));
+  const [review, setReview] = useState(String(camera.confidence_review_min));
+  const minN = Number(min);
+  const reviewN = Number(review);
+  const valid = min !== "" && review !== "" && Number.isInteger(minN) && Number.isInteger(reviewN) && minN >= 0 && minN <= 100 && reviewN >= 0 && reviewN <= 100;
+  const ordered = reviewN <= minN;
+  return (
+    <form
+      className="flex flex-col gap-1"
+      onSubmit={(e) => {
+        e.preventDefault();
+        update.mutate(
+          { cameraId: camera.id, body: { confidence_min: minN, confidence_review_min: reviewN, reason: t("devices.thresholdsReason") } },
+          {
+            onSuccess: () => {
+              toast.ok(t("devices.thresholdsSaved"));
+              onDone();
+            },
+          },
+        );
+      }}
+      data-testid="camera-thresholds-form"
+    >
+      <p className="rounded-lg bg-surface-2 px-3 py-2 text-[12.5px] font-semibold text-ink-2">{t("devices.thresholdsHint")}</p>
+      <div className="mt-3 grid gap-3 sm:grid-cols-2">
+        <div>
+          <Label htmlFor="thr-min">{t("devices.confidenceMin")}</Label>
+          <Input id="thr-min" type="number" min={0} max={100} value={min} onChange={(e) => setMin(e.target.value)} data-testid="thresholds-min" autoFocus />
+        </div>
+        <div>
+          <Label htmlFor="thr-review">{t("devices.reviewMin")}</Label>
+          <Input id="thr-review" type="number" min={0} max={100} value={review} onChange={(e) => setReview(e.target.value)} data-testid="thresholds-review" />
+        </div>
+      </div>
+      {valid && !ordered && <div className="mt-1 rounded-lg bg-warn-soft px-3 py-2 text-[12.5px] font-semibold text-warn-ink">{t("devices.thresholdsOrder")}</div>}
+      {update.isError && <ErrorBox error={update.error} />}
+      <div className="mt-4 flex gap-2">
+        <Button type="button" variant="ghost" onClick={onDone}>
+          {t("common.cancel")}
+        </Button>
+        <Button type="submit" className="ml-auto" disabled={update.isPending || !valid || !ordered} data-testid="thresholds-submit">
+          {update.isPending ? "…" : t("devices.accessSave")}
         </Button>
       </div>
     </form>

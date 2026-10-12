@@ -54,3 +54,34 @@ test("Hikvision barrier: address and camera password are changed together", asyn
   await expect(form).toBeHidden();
   await expect(row).toContainText("http://10.10.1.65");
 });
+
+/** Пороги распознавания камеры меняются в «Устройствах» (раньше — только при создании): ночью камеры дают 60–80, и с
+    порогом 80 каждый въезд уходил на ручную проверку. «На разбор ниже» выше «Уверенности» сохранить нельзя. Камера —
+    своя, общие камеры A1 не трогаем. */
+test("camera recognition thresholds are edited after creation", async ({ page }) => {
+  const s = stack();
+  await loginUi(page, s.users["tenant_admin"]!);
+  await page.getByTestId("lot-select").selectOption("00000000-0000-4000-8000-00000000a101");
+  await page.goto("/devices");
+  const code = `THR_${Date.now() % 100000}`;
+  await page.getByRole("button", { name: "Добавить камеру" }).click();
+  await page.getByTestId("camera-name").fill(`Порог ${code}`);
+  await page.getByTestId("camera-code").fill(code);
+  await page.getByTestId("camera-submit").click();
+  await page.getByTestId("key-done").click();
+  const row = page.getByTestId("camera-row").and(page.locator(`[data-code="${code}"]`));
+
+  await row.getByTestId("camera-thresholds").click();
+  const form = page.getByTestId("camera-thresholds-form");
+  await expect(form.getByTestId("thresholds-min")).toHaveValue("80");
+  await expect(form.getByTestId("thresholds-review")).toHaveValue("60");
+  await form.getByTestId("thresholds-min").fill("55");
+  await expect(form.getByTestId("thresholds-submit")).toBeDisabled(); // 60 на разбор > 55 автоматически
+  await form.getByTestId("thresholds-review").fill("40");
+  await form.getByTestId("thresholds-submit").click();
+  await expect(form).toBeHidden();
+
+  await row.getByTestId("camera-thresholds").click();
+  await expect(page.getByTestId("thresholds-min")).toHaveValue("55");
+  await expect(page.getByTestId("thresholds-review")).toHaveValue("40");
+});
