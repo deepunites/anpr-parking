@@ -51,3 +51,6 @@ crash.log
 # сервер TrueNAS: настройки площадки и пароли (deploy/truenas)
 deploy/truenas/parking.env
 deploy/truenas/LOGINS.txt
+
+# сервер TrueNAS: потоки камер для записи — с паролями камер (deploy/truenas/video.sh)
+deploy/truenas/video-streams.conf

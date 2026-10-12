@@ -51,7 +51,13 @@ env_value() {
   echo "${value:-$2}"
 }
 
+VIDEO_STREAMS="$HERE/video-streams.conf"  # список потоков камер (video.sh); есть — запись включена
+
 compose() {
-  docker compose -p anpr-parking --env-file "$ENV_FILE" \
+  local profiles=()
+  if [ -s "$VIDEO_STREAMS" ]; then
+    profiles=(--profile video)
+  fi
+  docker compose -p anpr-parking --env-file "$ENV_FILE" "${profiles[@]}" \
     -f "$ROOT/deploy/local/compose.yml" -f "$HERE/compose.override.yml" "$@"
 }

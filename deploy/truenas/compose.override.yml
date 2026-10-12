@@ -19,3 +19,34 @@ services:
       relay-sim:
         condition: service_started
         required: false  # в профиле site имитатора нет
+
+  # Круглосуточная запись камер на диск сервера: включает deploy/truenas/video.sh (профиль video). Пути — от
+  # deploy/local (каталог первого compose-файла). Папка видео не создаётся сама: без пула запись не начнётся,
+  # а не заполнит системный диск.
+  video:
+    profiles: ["video"]
+    image: anpr-parking/video:local
+    build:
+      context: ../truenas/video
+    init: true
+    restart: unless-stopped
+    environment:
+      TZ: ${PARKING_TIMEZONE:-Asia/Tashkent}
+      VIDEO_KEEP_DAYS: ${PARKING_VIDEO_KEEP_DAYS:-30}
+      VIDEO_MAX_USE_PERCENT: ${PARKING_VIDEO_MAX_USE_PERCENT:-90}
+    volumes:
+      - type: bind
+        source: ${PARKING_VIDEO_DIR:-/mnt/records}
+        target: /video
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ../truenas/video-streams.conf
+        target: /config/streams.conf
+        read_only: true
+        bind:
+          create_host_path: false
+    logging:
+      options:
+        max-size: 10m
+        max-file: "3"
