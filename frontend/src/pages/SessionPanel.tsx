@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { Car, Pencil, X } from "lucide-react";
+import { Car, Pencil, Video, X } from "lucide-react";
 import { useTranslation } from "@/i18n";
 import { useQuery } from "@tanstack/react-query";
 import { api, unwrap } from "@/api/client";
-import { keys, useConfirmCash, useCorrectPlate, useOpenExit, usePrepayCash, useQuote, useSession, useSessionImages, useSessionPayments, useSetSessionVehicle } from "@/api/hooks";
+import { keys, useConfirmCash, useCorrectPlate, useOpenExit, usePrepayCash, useQuote, useSession, useSessionImages, useSessionPayments, useSessionVideos, useSetSessionVehicle } from "@/api/hooks";
 import { PlateInput, isPlateValid } from "@/components/vehicle/PlateInput";
 import { VehicleFields } from "@/components/vehicle/VehicleFields";
 import { colorSwatch, vehicleLabel, type VehicleValue } from "@/components/vehicle/vehicle";
@@ -65,6 +65,39 @@ function Photos({ sessionId }: { sessionId: string }) {
 
 /** Карточка сессии: табличка номера, кадр, факты, сумма с сервера и три действия в фиксированном порядке —
     принять наличные · открыть выезд · исправить номер (I-15/I-16: причина обязательна, исходное распознавание сохраняется). */
+/* Видео въезда и выезда из записи камер на сервере площадки: ролик грузится только по нажатию (в карточке их
+   десятки за смену), ссылка подписана и живёт минуты — перед показом список перезапрашивается. Записи на сервере
+   нет вовсе — блок не показывается. */
+function SessionVideos({ sessionId, timeZone }: { sessionId: string; timeZone?: string }) {
+  const { t, i18n } = useTranslation();
+  const videos = useSessionVideos(sessionId);
+  const [playing, setPlaying] = useState<{ kind: string; url: string } | null>(null);
+  if (!videos.data?.enabled || videos.data.videos.length === 0) return null;
+  const label = (kind: string) => (kind === "ENTRY" ? t("session.videoEntry") : t("session.videoExit"));
+  const play = async (kind: string) => {
+    const fresh = await videos.refetch();
+    const video = fresh.data?.videos.find((v) => v.kind === kind);
+    if (video?.url) setPlaying({ kind, url: video.url });
+  };
+  return (
+    <div data-testid="session-videos">
+      <Eyebrow className="mb-1">{t("session.video")}</Eyebrow>
+      <div className="flex flex-wrap gap-2">
+        {videos.data.videos.map((v) => (
+          <Button key={v.kind} variant="outline" size="sm" disabled={!v.available} onClick={() => void play(v.kind)} data-testid="session-video" data-kind={v.kind}>
+            <Video className="h-4 w-4" aria-hidden="true" />
+            {label(v.kind)} {formatTime(v.event_time, timeZone, i18n.language)}
+            {!v.available && <span className="font-semibold text-muted">· {t("session.noVideo")}</span>}
+          </Button>
+        ))}
+      </div>
+      <Dialog open={playing !== null} onClose={() => setPlaying(null)} title={`${t("session.videoTitle")} · ${playing ? label(playing.kind) : ""}`}>
+        {playing && <video key={playing.url} src={playing.url} controls autoPlay muted playsInline className="aspect-video w-full rounded-xl bg-black" data-testid="session-video-player" />}
+      </Dialog>
+    </div>
+  );
+}
+
 export function SessionPanel({ sessionId, timeZone, onClose }: { sessionId: string; timeZone?: string; onClose?: () => void }) {
   const { t, i18n } = useTranslation();
   const me = useAuthStore((s) => s.me);
@@ -159,6 +192,8 @@ export function SessionPanel({ sessionId, timeZone, onClose }: { sessionId: stri
           <Fact label={t("session.access")} value={s.entry_access_kind ? t(`access.${s.entry_access_kind}`, { defaultValue: s.entry_access_kind }) : "—"} />
         </div>
       </div>
+
+      <SessionVideos sessionId={s.id} timeZone={timeZone} />
 
       {/* Платежи: сумма только с бэкенда, оператор её не редактирует */}
       <div>

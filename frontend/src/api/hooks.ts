@@ -37,6 +37,7 @@ export const keys = {
   session: (id: string) => ["session", id] as const,
   saga: (id: string) => ["saga", id] as const,
   images: (id: string) => ["images", id] as const,
+  videos: (id: string) => ["videos", id] as const,
   payments: (id: string) => ["payments", id] as const,
   quote: (id: string) => ["quote", id] as const,
   review: ["review-queue"] as const,
@@ -95,6 +96,16 @@ export function useSessionImages(id: string | null) {
     enabled: id !== null,
     retry: false,
     staleTime: 240_000, // presigned GET живёт 300 с
+  });
+}
+
+export function useSessionVideos(id: string | null) {
+  return useQuery({
+    queryKey: keys.videos(id ?? ""),
+    queryFn: async () => unwrap(await api.GET("/api/v1/sessions/{session_id}/videos", { params: { path: { session_id: id ?? "" } } })),
+    enabled: id !== null,
+    retry: false,
+    staleTime: 240_000, // подписанная ссылка на ролик живёт 300 с
   });
 }
 

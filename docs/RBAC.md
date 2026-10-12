@@ -143,6 +143,7 @@ API-ключ внешней системы получает только пра�
 | GET | `/api/v1/sessions/{session_id}/quote` | `payment:read` |
 | GET | `/api/v1/sessions/{session_id}/saga` | `sessions:read` |
 | POST | `/api/v1/sessions/{session_id}/vehicle` | `sessions:write` |
+| GET | `/api/v1/sessions/{session_id}/videos` | `sessions:read` |
 | GET | `/api/v1/shifts` | `shift:manage` |
 | POST | `/api/v1/shifts` | `shift:manage` |
 | GET | `/api/v1/shifts/current` | `shift:manage` |
@@ -166,6 +167,7 @@ API-ключ внешней системы получает только пра�
 | PATCH | `/api/v1/users/{user_id}/role` | `users:write` |
 | POST | `/api/v1/vehicles` | `sessions:write` |
 | POST | `/api/v1/vehicles/lookup` | `sessions:read` |
+| GET | `/api/v1/video/clips/{token}` | публичный |
 | GET | `/api/v1/webhook-deliveries` | `integrations:manage` |
 | POST | `/api/v1/webhook-deliveries/{delivery_id}/redeliver` | `integrations:manage` |
 | GET | `/api/v1/webhooks` | `integrations:manage` |

@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Copy, KeyRound, Pencil, Plug, Plus, Power, SlidersHorizontal, Zap } from "lucide-react";
+import { Copy, KeyRound, Pencil, Plug, Plus, Power, SlidersHorizontal, Video, Zap } from "lucide-react";
 import { fmt, useTranslation } from "@/i18n";
 import { useAuth } from "@/auth/useAuth";
 import { hasPermission } from "@/auth/store";
@@ -175,6 +175,7 @@ function CameraRow({ camera: c, timeZone, lang, canKeys, canWrite, onKeys }: { c
   const update = useUpdateCamera();
   const [reasonDialog, askReason] = useReasonDialog(update.isPending);
   const [tuning, setTuning] = useState(false);
+  const [video, setVideo] = useState(false);
   const st = cameraStatus(c, t);
   return (
     <tr data-testid="camera-row" data-code={c.code}>
@@ -206,6 +207,21 @@ function CameraRow({ camera: c, timeZone, lang, canKeys, canWrite, onKeys }: { c
             </Button>
             <Dialog open={tuning} onClose={() => setTuning(false)} title={`${t("devices.thresholds")} · ${c.name}`}>
               {tuning && <CameraThresholdsForm camera={c} onDone={() => setTuning(false)} />}
+            </Dialog>
+            <Button
+              variant="ghost"
+              size="sm"
+              title={c.has_video_credentials ? `${t("devices.videoOn")}: ${c.video_endpoint ?? ""}` : t("devices.video")}
+              aria-label={t("devices.video")}
+              className={c.has_video_credentials ? "text-ok-ink" : undefined}
+              data-testid="camera-video"
+              data-on={c.has_video_credentials ? "1" : "0"}
+              onClick={() => setVideo(true)}
+            >
+              <Video className="h-4 w-4" aria-hidden="true" />
+            </Button>
+            <Dialog open={video} onClose={() => setVideo(false)} title={`${t("devices.video")} · ${c.name}`}>
+              {video && <CameraVideoForm camera={c} onDone={() => setVideo(false)} />}
             </Dialog>
           </>
         )}
@@ -794,6 +810,74 @@ function CameraThresholdsForm({ camera, onDone }: { camera: CameraOut; onDone: (
           {t("common.cancel")}
         </Button>
         <Button type="submit" className="ml-auto" disabled={update.isPending || !valid || !ordered} data-testid="thresholds-submit">
+          {update.isPending ? "…" : t("devices.accessSave")}
+        </Button>
+      </div>
+    </form>
+  );
+}
+
+/* Видеозапись камеры на сервере площадки: адрес, логин и пароль — только вместе (пароль сервер не возвращает и не
+   отдаст на новый адрес без ввода заново). Нужна камере без своей стрелы — например, выездной при одной стреле. */
+function CameraVideoForm({ camera, onDone }: { camera: CameraOut; onDone: () => void }) {
+  const { t } = useTranslation();
+  const update = useUpdateCamera();
+  const [endpoint, setEndpoint] = useState(camera.video_endpoint ?? "");
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const hint = endpointHint(endpoint, "HIKVISION_ISAPI", t);
+  const saved = (text: string) => () => {
+    toast.ok(text);
+    onDone();
+  };
+  return (
+    <form
+      className="flex flex-col gap-1"
+      onSubmit={(e) => {
+        e.preventDefault();
+        update.mutate(
+          {
+            cameraId: camera.id,
+            body: { video_endpoint: endpoint.trim(), video_username: username.trim(), video_password: password, reason: t("devices.videoReason") },
+          },
+          { onSuccess: saved(t("devices.videoSaved")) },
+        );
+      }}
+      data-testid="camera-video-form"
+    >
+      <p className="rounded-lg bg-surface-2 px-3 py-2 text-[12.5px] font-semibold text-ink-2">{t("devices.videoHint")}</p>
+      <Label htmlFor="video-endpoint" className="mt-3">
+        {t("devices.endpoint")}
+      </Label>
+      <Input id="video-endpoint" className="font-mono" value={endpoint} onChange={(e) => setEndpoint(e.target.value)} placeholder="http://192.168.13.251" data-testid="video-endpoint" autoFocus />
+      {hint && <div className={`mt-1 rounded-lg px-3 py-2 text-[12.5px] font-semibold ${hint.ok ? "bg-ok-soft text-ok-ink" : "bg-warn-soft text-warn-ink"}`}>{hint.text}</div>}
+      <div className="mt-3 grid gap-3 sm:grid-cols-2">
+        <div>
+          <Label htmlFor="video-user">{t("devices.cameraLogin")}</Label>
+          <Input id="video-user" value={username} onChange={(e) => setUsername(e.target.value)} placeholder="admin" autoComplete="off" data-testid="video-username" />
+        </div>
+        <div>
+          <Label htmlFor="video-pass">{t("devices.cameraPassword")}</Label>
+          <Input id="video-pass" type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="new-password" data-testid="video-password" />
+        </div>
+      </div>
+      {update.isError && <ErrorBox error={update.error} />}
+      <div className="mt-4 flex gap-2">
+        <Button type="button" variant="ghost" onClick={onDone}>
+          {t("common.cancel")}
+        </Button>
+        {camera.has_video_credentials && (
+          <Button
+            type="button"
+            variant="outline"
+            disabled={update.isPending}
+            onClick={() => update.mutate({ cameraId: camera.id, body: { video_off: true, reason: t("devices.videoReason") } }, { onSuccess: saved(t("devices.videoOffSaved")) })}
+            data-testid="video-off"
+          >
+            {t("devices.videoOff")}
+          </Button>
+        )}
+        <Button type="submit" className="ml-auto" disabled={update.isPending || endpoint.trim().length < 3 || !username.trim() || !password} data-testid="video-submit">
           {update.isPending ? "…" : t("devices.accessSave")}
         </Button>
       </div>

@@ -82,6 +82,10 @@ class UpdateCameraCommand:
     max_clock_skew_seconds: int | None = None
     heartbeat_interval_sec: int | None = None
     active: bool | None = None
+    video_endpoint: str | None = None  # запись на сервере: адрес, логин и пароль камеры — только все три вместе
+    video_username: str | None = None
+    video_password: str | None = None
+    video_off: bool = False  # убрать адрес и пароль видео (камера больше не пишется сервером)
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -191,12 +195,36 @@ class DeviceAdminService:
                 heartbeat_interval_sec=cmd.heartbeat_interval_sec,
                 active=cmd.active,
             )
+            await self._update_camera_video(repos, actor, camera, cmd)
             await repos.cameras.save(camera)
             await self._audit(repos, actor, "CAMERA_UPDATED", "camera", camera.id, camera.lot_id, reason)
             if cmd.active is False:
                 for key in await repos.keys.list_for_camera(camera.id):
                     uow.after_commit(self._invalidator(key.key_prefix))
         return camera
+
+    async def _update_camera_video(
+        self, repos: AdminRepositories, actor: CurrentUser, camera: Camera, cmd: UpdateCameraCommand
+    ) -> None:
+        """Адрес и логин видеопотока: меняются только вместе (иначе роль с правом правки камер увела бы сохранённый
+        пароль на свой адрес), адрес — по SSRF-политике площадки, как у стрел."""
+        if cmd.video_off:
+            camera.set_video(None, None)
+            return
+        given = (cmd.video_endpoint, cmd.video_username, cmd.video_password)
+        if all(v is None for v in given):
+            return
+        endpoint, username, password = (v or "" for v in given)
+        if not endpoint.strip() or not username.strip() or not password:
+            raise ValidationError(
+                "camera video address, login and password are all required", code="CREDENTIALS_REQUIRED"
+            )
+        lot = await repos.lots.get(camera.lot_id)
+        if lot is None:
+            raise NotFoundError("lot not found")
+        await self.validate_endpoint(endpoint, BarrierDriverKind.HIKVISION_ISAPI, lot.policies.barrier_cidr_allowlist)
+        sealed = self._seal(actor.tenant_id, f"camera-video:{camera.id}", username, password)
+        camera.set_video(endpoint, sealed)
 
     # ---------- ключи ----------
 
@@ -320,10 +348,13 @@ class DeviceAdminService:
             return None
         if not username or not username.strip() or not password:
             raise ValidationError("camera login and password are both required", code="CREDENTIALS_REQUIRED")
+        return self._seal(tenant_id, f"barrier:{barrier_id}", username, password)
+
+    def _seal(self, tenant_id: UUID, purpose: str, username: str, password: str) -> bytes:
         if self._box is None:
             raise ValidationError("controller credentials are not supported here")
         secret = json.dumps({"username": username.strip(), "password": password}).encode()
-        return self._box.seal(tenant_id, f"barrier:{barrier_id}", secret)
+        return self._box.seal(tenant_id, purpose, secret)
 
     async def create_barrier(self, actor: CurrentUser, cmd: CreateBarrierCommand, *, reason: str) -> Barrier:
         self._check_lot(actor, cmd.lot_id)

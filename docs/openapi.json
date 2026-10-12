@@ -760,6 +760,11 @@
           "direction": {
             "$ref": "#/components/schemas/CameraDirection"
           },
+          "has_video_credentials": {
+            "default": false,
+            "title": "Has Video Credentials",
+            "type": "boolean"
+          },
           "heartbeat_interval_sec": {
             "title": "Heartbeat Interval Sec",
             "type": "integer"
@@ -821,6 +826,17 @@
           },
           "vendor": {
             "$ref": "#/components/schemas/CameraVendor"
+          },
+          "video_endpoint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Video Endpoint"
           }
         },
         "required": [
@@ -6234,6 +6250,89 @@
         "title": "SessionVehicleRequest",
         "type": "object"
       },
+      "SessionVideoOut": {
+        "properties": {
+          "available": {
+            "title": "Available",
+            "type": "boolean"
+          },
+          "camera_id": {
+            "title": "Camera Id",
+            "type": "string"
+          },
+          "end": {
+            "format": "date-time",
+            "title": "End",
+            "type": "string"
+          },
+          "event_time": {
+            "format": "date-time",
+            "title": "Event Time",
+            "type": "string"
+          },
+          "expires_in": {
+            "title": "Expires In",
+            "type": "integer"
+          },
+          "kind": {
+            "enum": [
+              "ENTRY",
+              "EXIT"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "start": {
+            "format": "date-time",
+            "title": "Start",
+            "type": "string"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url"
+          }
+        },
+        "required": [
+          "kind",
+          "camera_id",
+          "event_time",
+          "start",
+          "end",
+          "available",
+          "url",
+          "expires_in"
+        ],
+        "title": "SessionVideoOut",
+        "type": "object"
+      },
+      "SessionVideosOut": {
+        "properties": {
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "videos": {
+            "items": {
+              "$ref": "#/components/schemas/SessionVideoOut"
+            },
+            "title": "Videos",
+            "type": "array"
+          }
+        },
+        "required": [
+          "enabled",
+          "videos"
+        ],
+        "title": "SessionVideosOut",
+        "type": "object"
+      },
       "ShiftDiscrepancyOut": {
         "properties": {
           "cashier_name": {
@@ -6937,6 +7036,53 @@
             "minLength": 3,
             "title": "Reason",
             "type": "string"
+          },
+          "video_endpoint": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Video Endpoint"
+          },
+          "video_off": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Video Off"
+          },
+          "video_password": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Video Password"
+          },
+          "video_username": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Video Username"
           }
         },
         "required": [
@@ -13075,6 +13221,58 @@
         ]
       }
     },
+    "/api/v1/sessions/{session_id}/videos": {
+      "get": {
+        "description": "Ролики въезда и выезда из записи камер сервера площадки; ссылки подписаны и живут минуты.",
+        "operationId": "session_videos_api_v1_sessions__session_id__videos_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Session Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionVideosOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Session Videos",
+        "tags": [
+          "sessions"
+        ],
+        "x-permission": [
+          "sessions:read"
+        ]
+      }
+    },
     "/api/v1/shifts": {
       "get": {
         "operationId": "list_shifts_api_v1_shifts_get",
@@ -14201,6 +14399,46 @@
         "x-permission": [
           "sessions:read"
         ]
+      }
+    },
+    "/api/v1/video/clips/{token}": {
+      "get": {
+        "description": "Ролик по ссылке из /sessions/{id}/videos: право — подпись в ссылке (тег <video> не шлёт Authorization).\nПеремотка — запросами Range.",
+        "operationId": "video_clip_api_v1_video_clips__token__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "token",
+            "required": true,
+            "schema": {
+              "title": "Token",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "video/mp4": {}
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Video Clip",
+        "tags": [
+          "sessions"
+        ],
+        "x-public": true
       }
     },
     "/api/v1/webhook-deliveries": {

@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
-from parking.api.deps import get_container, permission_extra, require
+from parking.api.deps import PUBLIC, get_container, permission_extra, require
 from parking.api.pagination import MAX_LIMIT, Page, decode_cursor, encode_cursor
 from parking.api.schemas import Reason
 from parking.modules.identity.application.contracts import CurrentUser, Permission
@@ -213,6 +214,65 @@ async def session_images(
         )
         for i in await container.media.session_images(user, session_id)
     ]
+
+
+class SessionVideoOut(BaseModel):
+    kind: Literal["ENTRY", "EXIT"]
+    camera_id: str
+    event_time: datetime
+    start: datetime
+    end: datetime
+    available: bool
+    url: str | None
+    expires_in: int
+
+
+class SessionVideosOut(BaseModel):
+    enabled: bool  # на сервере есть запись камер; нет — раздел «Видео» не показывается
+    videos: list[SessionVideoOut]
+
+
+@router.get(
+    "/sessions/{session_id}/videos",
+    response_model=SessionVideosOut,
+    openapi_extra=permission_extra(Permission.SESSIONS_READ),
+)
+async def session_videos(
+    session_id: UUID,
+    user: Annotated[CurrentUser, Depends(require(Permission.SESSIONS_READ))],
+    container: Annotated[Container, Depends(get_container)],
+) -> SessionVideosOut:
+    """Ролики въезда и выезда из записи камер сервера площадки; ссылки подписаны и живут минуты."""
+    videos = await container.video.session_videos(user, session_id)
+    return SessionVideosOut(
+        enabled=container.video.enabled,
+        videos=[
+            SessionVideoOut(
+                kind=v.kind,
+                camera_id=str(v.camera_id),
+                event_time=v.event_time,
+                start=v.start,
+                end=v.end,
+                available=v.available,
+                url=v.url,
+                expires_in=v.expires_in,
+            )
+            for v in videos
+        ],
+    )
+
+
+@router.get(
+    "/video/clips/{token}",
+    response_class=FileResponse,
+    openapi_extra=PUBLIC,
+    responses={200: {"content": {"video/mp4": {}}}},
+)
+async def video_clip(token: str, container: Annotated[Container, Depends(get_container)]) -> FileResponse:
+    """Ролик по ссылке из /sessions/{id}/videos: право — подпись в ссылке (тег <video> не шлёт Authorization).
+    Перемотка — запросами Range."""
+    path = await container.video.clip(token)
+    return FileResponse(path, media_type="video/mp4", headers={"Cache-Control": "private, max-age=300"})
 
 
 @router.get(

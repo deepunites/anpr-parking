@@ -1497,6 +1497,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/sessions/{session_id}/videos": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Session Videos
+         * @description Ролики въезда и выезда из записи камер сервера площадки; ссылки подписаны и живут минуты.
+         */
+        get: operations["session_videos_api_v1_sessions__session_id__videos_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/shifts": {
         parameters: {
             query?: never;
@@ -1824,6 +1844,27 @@ export interface paths {
          * @description Что система знает о машине: марка/модель/цвет и стоит ли она сейчас на доступной площадке.
          */
         post: operations["lookup_vehicle_api_v1_vehicles_lookup_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/video/clips/{token}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Video Clip
+         * @description Ролик по ссылке из /sessions/{id}/videos: право — подпись в ссылке (тег <video> не шлёт Authorization).
+         *     Перемотка — запросами Range.
+         */
+        get: operations["video_clip_api_v1_video_clips__token__get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -2218,6 +2259,11 @@ export interface components {
             /** Confidence Review Min */
             confidence_review_min: number;
             direction: components["schemas"]["CameraDirection"];
+            /**
+             * Has Video Credentials
+             * @default false
+             */
+            has_video_credentials: boolean;
             /** Heartbeat Interval Sec */
             heartbeat_interval_sec: number;
             /** Id */
@@ -2237,6 +2283,8 @@ export interface components {
             /** Status */
             status: string;
             vendor: components["schemas"]["CameraVendor"];
+            /** Video Endpoint */
+            video_endpoint?: string | null;
         };
         /**
          * CameraVendor
@@ -4032,6 +4080,44 @@ export interface components {
              */
             reason: string;
         };
+        /** SessionVideoOut */
+        SessionVideoOut: {
+            /** Available */
+            available: boolean;
+            /** Camera Id */
+            camera_id: string;
+            /**
+             * End
+             * Format: date-time
+             */
+            end: string;
+            /**
+             * Event Time
+             * Format: date-time
+             */
+            event_time: string;
+            /** Expires In */
+            expires_in: number;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "ENTRY" | "EXIT";
+            /**
+             * Start
+             * Format: date-time
+             */
+            start: string;
+            /** Url */
+            url: string | null;
+        };
+        /** SessionVideosOut */
+        SessionVideosOut: {
+            /** Enabled */
+            enabled: boolean;
+            /** Videos */
+            videos: components["schemas"]["SessionVideoOut"][];
+        };
         /** ShiftDiscrepancyOut */
         ShiftDiscrepancyOut: {
             /** Cashier Name */
@@ -4259,6 +4345,14 @@ export interface components {
              * @description Обязательное обоснование ручного действия (I-15)
              */
             reason: string;
+            /** Video Endpoint */
+            video_endpoint?: string | null;
+            /** Video Off */
+            video_off?: boolean | null;
+            /** Video Password */
+            video_password?: string | null;
+            /** Video Username */
+            video_username?: string | null;
         };
         /** UpdateLotRequest */
         UpdateLotRequest: {
@@ -7612,6 +7706,37 @@ export interface operations {
             };
         };
     };
+    session_videos_api_v1_sessions__session_id__videos_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionVideosOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_shifts_api_v1_shifts_get: {
         parameters: {
             query?: never;
@@ -8309,6 +8434,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["VehicleOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    video_clip_api_v1_video_clips__token__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "video/mp4": unknown;
                 };
             };
             /** @description Validation Error */

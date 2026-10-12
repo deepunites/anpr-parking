@@ -47,6 +47,8 @@ class CameraOut(BaseModel):
     status: str
     last_heartbeat_at: datetime | None
     last_event_at: datetime | None
+    video_endpoint: str | None = None  # запись на сервере площадки; логин и пароль в ответ не попадают
+    has_video_credentials: bool = False
 
     @classmethod
     def of(cls, c: Camera) -> CameraOut:
@@ -66,6 +68,8 @@ class CameraOut(BaseModel):
             status=c.status.value,
             last_heartbeat_at=c.last_heartbeat_at,
             last_event_at=c.last_event_at,
+            video_endpoint=c.video_endpoint,
+            has_video_credentials=c.video_credentials_encrypted is not None,
         )
 
 
@@ -91,6 +95,10 @@ class UpdateCameraRequest(BaseModel):
     max_clock_skew_seconds: int | None = Field(default=None, gt=0, le=86_400)
     heartbeat_interval_sec: int | None = Field(default=None, gt=0, le=86_400)
     active: bool | None = None
+    video_endpoint: str | None = Field(default=None, max_length=200)
+    video_username: str | None = Field(default=None, max_length=100)
+    video_password: str | None = Field(default=None, max_length=200)
+    video_off: bool | None = None  # true — убрать адрес и пароль видео
     reason: Reason
 
 
@@ -272,6 +280,10 @@ async def update_camera(
             max_clock_skew_seconds=body.max_clock_skew_seconds,
             heartbeat_interval_sec=body.heartbeat_interval_sec,
             active=body.active,
+            video_endpoint=body.video_endpoint,
+            video_username=body.video_username,
+            video_password=body.video_password,
+            video_off=bool(body.video_off),
         ),
         reason=body.reason,
     )

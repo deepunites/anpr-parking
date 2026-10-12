@@ -1,5 +1,5 @@
 #!/bin/sh
-# Запись камер: по строке «папка rtsp-адрес» из /config/streams.conf (пишет deploy/truenas/video.sh) ffmpeg забирает
+# Запись камер: по строке «папка rtsp-адрес id-камеры» из /config/streams.conf (пишет deploy/truenas/video.sh) ffmpeg забирает
 # поток и режет его на файлы /video/<папка>/<ГГГГ-ММ-ДД>/<ЧЧ-ММ-СС>.mp4 по VIDEO_SEGMENT_SECONDS. Видео копируется как
 # есть — сервер почти не нагружен. MP4 фрагментированный: файл смотрится, даже если запись оборвалась (выключили свет).
 # Поток оборвался — переподключение через 10 с. Каждые 5 минут удаляются записи старше VIDEO_KEEP_DAYS дней и самые
@@ -69,7 +69,7 @@ fi
 
 trap 'trap - TERM INT; kill 0' TERM INT  # остановка контейнера: ffmpeg дописывает текущий файл
 day_dirs
-while read -r folder url; do
+while read -r folder url _; do
   [ -n "${url:-}" ] && record "$folder" "$url" &
 done < "$CONF"
 

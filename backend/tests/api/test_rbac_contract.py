@@ -162,6 +162,7 @@ SAMPLES: dict[tuple[str, str], dict[str, Any]] = {
         "json": {"reason": "rbac contract test"},
     },
     ("GET", "/api/v1/sessions/{session_id}/images"): {"path": {"session_id": "{session_id}"}},
+    ("GET", "/api/v1/sessions/{session_id}/videos"): {"path": {"session_id": "{session_id}"}},
     ("GET", "/api/v1/cameras"): {},
     ("GET", "/api/v1/cameras/{camera_id}"): {"path": {"camera_id": str(CAM_A1_IN)}},
     ("POST", "/api/v1/cameras"): {

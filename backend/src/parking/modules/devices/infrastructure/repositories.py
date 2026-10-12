@@ -58,7 +58,7 @@ _BARRIER_COLUMNS = """
 _CAMERA_COLUMNS = """
     id, tenant_id, lot_id, code, name, direction::text AS direction, vendor::text AS vendor, location, confidence_min,
     confidence_review_min, max_clock_skew_seconds, heartbeat_interval_sec, active, status::text AS status,
-    last_heartbeat_at, last_event_at, firmware_version
+    last_heartbeat_at, last_event_at, firmware_version, video_endpoint, video_credentials_encrypted
 """
 _KEY_COLUMNS = """
     id, tenant_id, camera_id, key_prefix, key_hmac, pepper_version, label, active, created_at, created_by, expires_at,
@@ -118,6 +118,10 @@ def _camera(r: Any) -> Camera:
         last_heartbeat_at=r.last_heartbeat_at,
         last_event_at=r.last_event_at,
         firmware_version=r.firmware_version,
+        video_endpoint=r.video_endpoint,
+        video_credentials_encrypted=(
+            bytes(r.video_credentials_encrypted) if r.video_credentials_encrypted is not None else None
+        ),
     )
 
 
@@ -303,7 +307,8 @@ class SqlCameraRepository:
             text(
                 """
                 UPDATE camera SET name = :name, location = :location, confidence_min = :cmin, confidence_review_min = :crmin,
-                    max_clock_skew_seconds = :skew, heartbeat_interval_sec = :hb, active = :active
+                    max_clock_skew_seconds = :skew, heartbeat_interval_sec = :hb, active = :active,
+                    video_endpoint = :video, video_credentials_encrypted = :video_creds
                 WHERE id = :id
                 """
             ),
@@ -316,6 +321,8 @@ class SqlCameraRepository:
                 "skew": c.max_clock_skew_seconds,
                 "hb": c.heartbeat_interval_sec,
                 "active": c.active,
+                "video": c.video_endpoint,
+                "video_creds": c.video_credentials_encrypted,
             },
         )
 

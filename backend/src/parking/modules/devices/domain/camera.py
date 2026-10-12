@@ -53,6 +53,8 @@ class Camera:
     last_heartbeat_at: datetime | None = None
     last_event_at: datetime | None = None
     firmware_version: str | None = None
+    video_endpoint: str | None = None  # запись на сервере площадки: http://IP камеры (RTSP — порт 554)
+    video_credentials_encrypted: bytes | None = None  # логин/пароль видеопотока, зашифрованы ключом клиента
 
     def __post_init__(self) -> None:
         if not (0 <= self.confidence_review_min <= self.confidence_min <= 100):
@@ -86,6 +88,13 @@ class Camera:
         if active is not None:
             self.active = active
         self.__post_init__()
+
+    def set_video(self, endpoint: str | None, credentials_encrypted: bytes | None) -> None:
+        """Адрес и логин видеопотока — только вместе; None и None — запись этой камеры выключена."""
+        if (endpoint is None) != (credentials_encrypted is None):
+            raise ValidationError("camera video address, login and password go together", code="CREDENTIALS_REQUIRED")
+        self.video_endpoint = endpoint.strip() if endpoint else None
+        self.video_credentials_encrypted = credentials_encrypted
 
 
 def compute_status(

@@ -1,8 +1,9 @@
 """Видеопотоки камер Hikvision для круглосуточной записи на диск сервера площадки (deploy/truenas/video.sh).
 
 Камера DS-TCG406-E не пишет видео на сетевой диск (в прошивке нет NAS) — запись ведёт сервер: забирает RTSP-поток
-камеры и режет его на файлы. Логин и пароль камеры уже есть у её стрелы (драйвер HIKVISION_ISAPI, зашифрованы
-ключом клиента) — второй раз их не вводят. Печатает строки «<папка> <rtsp-адрес>»: папка cam-entry / cam-exit по
+камеры и режет его на файлы. Адрес, логин и пароль — «Видеозапись» камеры в «Устройствах», а если там пусто — логин
+и пароль её стрелы (драйвер HIKVISION_ISAPI): у камеры въезда со своей стрелой второй раз их не вводят. Всё
+зашифровано ключом клиента. Печатает строки «<папка> <rtsp-адрес> <id камеры>»: папка cam-entry / cam-exit по
 назначению камеры (вторая камера того же назначения — cam-entry-2 …). В выводе пароли — video.sh пишет его в файл
 с правами 600, на экран не выводит.
 """
@@ -31,16 +32,22 @@ MAIN_STREAM = "101"  # 101 — основной поток (полное раз�
 FOLDER = {"IN": "cam-entry", "OUT": "cam-exit"}
 
 _STREAMS = """
-    SELECT b.id, b.tenant_id, b.endpoint, b.credentials_encrypted, c.code, c.direction::text AS direction
-    FROM barrier b JOIN camera c ON c.id = b.camera_id
-    WHERE b.active AND c.active AND b.driver = 'HIKVISION_ISAPI' AND b.credentials_encrypted IS NOT NULL
-    ORDER BY c.direction, c.code, b.id
+    SELECT c.id, c.tenant_id, c.code, c.direction::text AS direction, c.video_endpoint, c.video_credentials_encrypted,
+           b.id AS barrier_id, b.endpoint AS barrier_endpoint, b.credentials_encrypted AS barrier_credentials
+    FROM camera c
+    LEFT JOIN LATERAL (
+        SELECT id, endpoint, credentials_encrypted FROM barrier
+        WHERE camera_id = c.id AND active AND driver = 'HIKVISION_ISAPI' AND credentials_encrypted IS NOT NULL
+        ORDER BY id LIMIT 1
+    ) b ON true
+    WHERE c.active AND (c.video_endpoint IS NOT NULL OR b.id IS NOT NULL)
+    ORDER BY c.direction, c.code
 """
 
 
 @dataclass(frozen=True, slots=True)
 class Stream:
-    barrier_id: UUID
+    camera_id: UUID
     camera_code: str
     folder: str
     url: str
@@ -55,18 +62,30 @@ def rtsp_url(endpoint: str, username: str, password: str, channel: str = MAIN_ST
 
 
 async def streams(container: Any, conn: asyncpg.Connection, channel: str = MAIN_STREAM) -> list[Stream]:
-    """Камеры с действующей стрелой Hikvision и сохранёнными логином/паролем; conn — суперпользователь БД."""
+    """Камеры с адресом и паролем видео или со стрелой Hikvision с логином/паролем; conn — суперпользователь БД."""
     await container.refresh_tenant_keys()  # ключи клиентов, зарегистрированных после старта процесса
     box = TenantSecretBox(container.layered_keys)
     found: list[Stream] = []
     taken: dict[str, int] = {}
     for row in await conn.fetch(_STREAMS):
-        creds = json.loads(box.open(row["tenant_id"], f"barrier:{row['id']}", bytes(row["credentials_encrypted"])))
+        if row["video_endpoint"] is not None:  # «Видеозапись» камеры главнее стрелы
+            endpoint, purpose, sealed = (
+                row["video_endpoint"],
+                f"camera-video:{row['id']}",
+                row["video_credentials_encrypted"],
+            )
+        else:
+            endpoint, purpose, sealed = (
+                row["barrier_endpoint"],
+                f"barrier:{row['barrier_id']}",
+                row["barrier_credentials"],
+            )
+        creds = json.loads(box.open(row["tenant_id"], purpose, bytes(sealed)))
         base = FOLDER.get(row["direction"], "cam")
         taken[base] = taken.get(base, 0) + 1
         folder = base if taken[base] == 1 else f"{base}-{taken[base]}"
-        url = rtsp_url(row["endpoint"], creds["username"], creds["password"], channel)
-        found.append(Stream(barrier_id=row["id"], camera_code=row["code"], folder=folder, url=url))
+        url = rtsp_url(endpoint, creds["username"], creds["password"], channel)
+        found.append(Stream(camera_id=row["id"], camera_code=row["code"], folder=folder, url=url))
     return found
 
 
@@ -82,7 +101,7 @@ async def main(channel: str) -> None:
         await container.aclose()
         await database.dispose()
     for stream in found:
-        print(f"{stream.folder} {stream.url}")
+        print(f"{stream.folder} {stream.url} {stream.camera_id}")
     print(f"камер для записи: {len(found)}", file=sys.stderr)
 
 

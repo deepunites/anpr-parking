@@ -139,6 +139,14 @@ class Settings(BaseSettings):
     s3_presign_put_ttl_seconds: int = Field(default=300, ge=30, le=3600)
     s3_presign_get_ttl_seconds: int = Field(default=300, ge=30, le=3600)
     media_max_bytes: int = Field(default=8 * 1024 * 1024, ge=1024)
+    video_dir: str = Field(
+        default="", description="Запись камер на сервере площадки (deploy/truenas/video.sh); пусто — видео сессий нет"
+    )
+    video_timezone: str = Field(default="UTC", description="Часовой пояс времени в именах файлов записи")
+    video_clip_before_seconds: int = Field(default=10, ge=0, le=120, description="Ролик сессии: секунд до события")
+    video_clip_after_seconds: int = Field(default=20, ge=1, le=300, description="Ролик сессии: секунд после события")
+    video_clip_cache_dir: str = "/tmp/parking-video-clips"  # noqa: S108 — единственный пишущий каталог образа
+    video_link_ttl_seconds: int = Field(default=300, ge=30, le=3600, description="Сколько живёт ссылка на ролик")
     vault_addr: str | None = None
     vault_role_id: SecretStr | None = None
     vault_secret_id: SecretStr | None = None

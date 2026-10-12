@@ -35,6 +35,7 @@ dependencies = [
     "sentry-sdk[fastapi]>=2.0",
     "pyyaml>=6",
     "defusedxml>=0.7.1",
+    "av>=19.0",
 ]
 
 [dependency-groups]

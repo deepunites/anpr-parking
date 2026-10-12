@@ -2,7 +2,8 @@
 # Круглосуточная запись камер на диск сервера. Камера DS-TCG406-E сама на сетевой диск не пишет (в прошивке нет NAS),
 # поэтому поток забирает сервер: сервис video (deploy/truenas/video) режет его на 10-минутные файлы
 #   <PARKING_VIDEO_DIR>/cam-entry/2026-10-12/15-40-00.mp4   (cam-exit — камера выезда)
-# Логин и пароль камеры — те, что у её стрелы в «Устройствах» (второй раз не вводятся).
+# Адрес, логин и пароль — «Видеозапись» камеры в «Устройствах» панели, а если там пусто — логин и пароль её стрелы.
+# Ролики въезда и выезда в карточке сессии панель берёт из этой же записи.
 #   sudo bash video.sh          — включить запись или обновить список камер (после новой камеры или пароля)
 #   sudo bash video.sh status   — что пишется и сколько места
 #   sudo bash video.sh off      — выключить запись (записанные файлы остаются)
@@ -43,6 +44,7 @@ case "${1:-on}" in
     if [ -s "$VIDEO_STREAMS" ]; then
       compose rm -sf video
       rm -f "$VIDEO_STREAMS"
+      compose up -d api  # без тома с записью
     fi
     echo "Запись камер выключена, файлы остались в $VIDEO_DIR."
     exit 0
@@ -61,19 +63,26 @@ tmp=$(mktemp)
 trap 'rm -f "$tmp"' EXIT
 compose exec -T api python /stand/entry.py python /stand/camera_streams.py "$STREAM" > "$tmp" ||
   fail "Не удалось получить список камер — парковка запущена? (sudo bash $HERE/install.sh)"
-[ -s "$tmp" ] || fail "Нет камер для записи: нужна стрела «Камера Hikvision» с логином и паролем, привязанная к камере
-    (панель → «Устройства» → «Стрелы»)."
+[ -s "$tmp" ] || fail "Нет камер для записи: у камеры нужна «Видеозапись» (адрес, логин, пароль) или стрела «Камера
+    Hikvision» с логином и паролем (панель → «Устройства»)."
 
-while read -r folder _; do
+while read -r folder _ camera; do
   mkdir -p "$VIDEO_DIR/$folder"
-  chown "$APPS_UID:$APPS_UID" "$VIDEO_DIR/$folder"
-  chmod 750 "$VIDEO_DIR/$folder"
+  echo "$camera" > "$VIDEO_DIR/$folder/.camera"  # чья папка — для роликов в карточке сессии
+  chown "$APPS_UID:$APPS_UID" "$VIDEO_DIR/$folder" "$VIDEO_DIR/$folder/.camera"
+  chmod 755 "$VIDEO_DIR/$folder"  # API (пользователь 10001) читает запись; сама папка — только на сервере
 done < "$tmp"
+if [ -s "$VIDEO_STREAMS" ] && cmp -s "$tmp" "$VIDEO_STREAMS" && [ -n "$(compose ps -q video 2>/dev/null)" ]; then
+  echo "Список камер не изменился — запись идёт."
+  status
+  exit 0
+fi
 install -m 600 -o "$APPS_UID" -g "$APPS_UID" "$tmp" "$VIDEO_STREAMS"  # в файле пароли камер
 
 echo "Сборка и запуск записи..."
 compose build video
 compose up -d --force-recreate video
+compose up -d api  # том с записью и часовой пояс — для роликов в карточке сессии
 echo "Ждём первые секунды записи..."
 sleep 30
 status

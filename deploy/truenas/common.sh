@@ -54,10 +54,9 @@ env_value() {
 VIDEO_STREAMS="$HERE/video-streams.conf"  # список потоков камер (video.sh); есть — запись включена
 
 compose() {
-  local profiles=()
+  local files=(-f "$ROOT/deploy/local/compose.yml" -f "$HERE/compose.override.yml")
   if [ -s "$VIDEO_STREAMS" ]; then
-    profiles=(--profile video)
+    files+=(-f "$HERE/compose.video.yml")  # сервис записи и доступ API к ней
   fi
-  docker compose -p anpr-parking --env-file "$ENV_FILE" "${profiles[@]}" \
-    -f "$ROOT/deploy/local/compose.yml" -f "$HERE/compose.override.yml" "$@"
+  docker compose -p anpr-parking --env-file "$ENV_FILE" "${files[@]}" "$@"
 }

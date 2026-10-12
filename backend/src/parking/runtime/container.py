@@ -5,7 +5,9 @@ from __future__ import annotations
 import base64
 from dataclasses import dataclass
 from datetime import timedelta
+from pathlib import Path
 from uuid import UUID
+from zoneinfo import ZoneInfo
 
 from redis.asyncio import Redis
 
@@ -93,9 +95,12 @@ from parking.modules.integrations.infrastructure.repositories import (
 )
 from parking.modules.integrations.infrastructure.sender import HttpWebhookSender
 from parking.modules.media.application.service import MediaRepositories, MediaService
+from parking.modules.media.application.video import VideoService
+from parking.modules.media.infrastructure.clip_tokens import JwtClipTokens
 from parking.modules.media.infrastructure.pending import RedisPendingFrames
 from parking.modules.media.infrastructure.repositories import SqlMediaRepository
 from parking.modules.media.infrastructure.s3 import S3ObjectStore
+from parking.modules.media.infrastructure.video_archive import FileVideoArchive
 from parking.modules.parking.application.services import ParkingRepositories, ParkingService
 from parking.modules.parking.infrastructure.occupancy import RedisOccupancy
 from parking.modules.parking.infrastructure.repositories import (
@@ -194,6 +199,7 @@ class Container:
     devices: DeviceAdminService
     ingest: IngestService
     media: MediaService
+    video: VideoService
     privacy: PrivacyService
     dlq: DlqAdminService
     camera_health: CameraHealthJob
@@ -473,6 +479,25 @@ def build_container(settings: Settings, database: Database, *, clock: Clock | No
         get_ttl_seconds=settings.s3_presign_get_ttl_seconds,
         pending=RedisPendingFrames(redis),
     )
+    video = VideoService(
+        archive=(
+            FileVideoArchive(
+                Path(settings.video_dir), ZoneInfo(settings.video_timezone), Path(settings.video_clip_cache_dir)
+            )
+            if settings.video_dir
+            else None
+        ),
+        tokens=JwtClipTokens(
+            private_key_pem=settings.jwt_private_key.get_secret_value(),
+            public_key_pem=settings.jwt_public_key,
+            issuer=settings.jwt_issuer,
+            ttl=timedelta(seconds=settings.video_link_ttl_seconds),
+        ),
+        session_lookup=parking.get_session,
+        clock=clock,
+        before_seconds=settings.video_clip_before_seconds,
+        after_seconds=settings.video_clip_after_seconds,
+    )
 
     def privacy_repos(uow: UnitOfWork) -> PrivacyRepositories:
         return PrivacyRepositories(
@@ -639,6 +664,7 @@ def build_container(settings: Settings, database: Database, *, clock: Clock | No
             ),
         ),
         media=media,
+        video=video,
         privacy=privacy,
         dlq=DlqAdminService(
             store=RedisDlqStore(redis), uow_factory=uow_factory, audit=lambda uow: SqlAuditWriter(uow.session)

@@ -1,0 +1,44 @@
+# Круглосуточная запись камер на диск сервера площадки. Подключается скриптами (common.sh), когда запись включена
+# (sudo bash deploy/truenas/video.sh): без него у api нет тома с записью, а сервиса video нет вовсе. Пути — от
+# deploy/local (каталог первого compose-файла). Папка видео не создаётся сама: без пула запись не начнётся, а не
+# заполнит системный диск.
+services:
+  video:
+    image: anpr-parking/video:local
+    build:
+      context: ../truenas/video
+    init: true
+    restart: unless-stopped
+    environment:
+      TZ: ${PARKING_TIMEZONE:-Asia/Tashkent}
+      VIDEO_KEEP_DAYS: ${PARKING_VIDEO_KEEP_DAYS:-30}
+      VIDEO_MAX_USE_PERCENT: ${PARKING_VIDEO_MAX_USE_PERCENT:-90}
+    volumes:
+      - type: bind
+        source: ${PARKING_VIDEO_DIR:-/mnt/records}
+        target: /video
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ../truenas/video-streams.conf
+        target: /config/streams.conf
+        read_only: true
+        bind:
+          create_host_path: false
+    logging:
+      options:
+        max-size: 10m
+        max-file: "3"
+
+  # ролики въезда и выезда в карточке сессии: API читает запись (только чтение) и режет ролик без перекодирования
+  api:
+    environment:
+      PARKING_VIDEO_DIR: /video
+      PARKING_VIDEO_TIMEZONE: ${PARKING_TIMEZONE:-Asia/Tashkent}
+    volumes:
+      - type: bind
+        source: ${PARKING_VIDEO_DIR:-/mnt/records}
+        target: /video
+        read_only: true
+        bind:
+          create_host_path: false
