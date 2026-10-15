@@ -80,6 +80,7 @@ def stand_env(s: dict[str, Any]) -> dict[str, str]:
         "PARKING_S3_ENDPOINT": S3_ENDPOINT,
         "PARKING_S3_ACCESS_KEY": s["s3_access_key"],
         "PARKING_S3_SECRET_KEY": s["s3_secret_key"],
+        "PARKING_MEDIA_PROXY": "true",  # MinIO — внутри docker-сети, браузеру не виден: фото номеров отдаёт API
         "PARKING_CORS_ORIGINS": "[]",  # веб и API — один origin через nginx
         "PARKING_SIGNUP_DEV_CODES": "true",
     }

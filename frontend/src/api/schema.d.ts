@@ -971,6 +971,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/media/images/{token}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Media Image
+         * @description Фото номера по ссылке из /sessions/{id}/images, когда хранилище браузеру не видно (сервер площадки).
+         */
+        get: operations["media_image_api_v1_media_images__token__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/payments/webhook/{provider}": {
         parameters: {
             query?: never;
@@ -6754,6 +6774,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PlanOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    media_image_api_v1_media_images__token__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/jpeg": unknown;
                 };
             };
             /** @description Validation Error */

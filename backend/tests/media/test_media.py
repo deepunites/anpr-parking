@@ -6,14 +6,15 @@ from __future__ import annotations
 import base64
 import subprocess
 import sys
-from datetime import UTC, datetime
-from uuid import UUID
+from datetime import UTC, datetime, timedelta
+from uuid import UUID, uuid4
 
 import httpx
 import pytest
 
 from parking.modules.identity.application.contracts import Role
 from parking.modules.media.domain.object_key import key_belongs_to, parse_key
+from parking.modules.media.infrastructure.image_links import JwtImageLinks
 from parking.runtime.container import Container
 from tests.conftest import BACKEND, CAM_A1_IN, LOT_A1, TENANT_A
 from tests.support.api_fixtures import Principal, bearer
@@ -123,6 +124,63 @@ async def test_vendor_adapters_store_frame(minio: str, client: httpx.AsyncClient
     dh = await client.post("/api/v1/camera/vendor/dahua", json=dahua, headers={"X-Camera-Key": entry_key})
     assert dh.status_code == 200, dh.text
     assert dh.json()["status"] == "ENTRY_CONFIRMED"
+
+
+async def test_image_served_through_api_when_storage_is_internal(
+    minio: str,
+    client: httpx.AsyncClient,
+    container: Container,
+    entry_key: str,
+    users: dict[Role, Principal],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Сервер площадки (MediaPark, 2026-10-15): MinIO браузеру не виден — presigned GET вёл на minio:9000 и фото в
+    карточке не открывалось. С PARKING_MEDIA_PROXY фото отдаёт API по подписанной ссылке: <img> без Authorization."""
+    settings = container.settings
+    links = JwtImageLinks(
+        private_key_pem=settings.jwt_private_key.get_secret_value(),
+        public_key_pem=settings.jwt_public_key,
+        issuer=settings.jwt_issuer,
+        ttl=timedelta(minutes=5),
+    )
+    monkeypatch.setattr(container.media, "_links", links)
+    files = {
+        "anpr.xml": ("anpr.xml", _hik_xml(unique_plate()).encode(), "application/xml"),
+        "licensePlatePicture.jpg": ("p.jpg", JPEG, "image/jpeg"),
+    }
+    hik = await client.post("/api/v1/camera/vendor/hikvision", files=files, headers={"X-Camera-Key": entry_key})
+    assert hik.status_code == 200, hik.text
+    images = await client.get(
+        f"/api/v1/sessions/{hik.json()['session_id']}/images", headers=await bearer(client, users[Role.CASHIER])
+    )
+    assert images.status_code == 200 and len(images.json()) == 1, images.text
+    url = str(images.json()[0]["url"])
+    assert url.startswith("/api/v1/media/images/")
+
+    view = await client.get(url)  # без Authorization — как тег <img>
+    assert view.status_code == 200 and view.content == JPEG and view.headers["content-type"] == "image/jpeg"
+    token = url.rsplit("/", 1)[1]
+    forged = await client.get(f"/api/v1/media/images/{token[:-4]}AAAA")
+    assert forged.status_code == 401
+    login = await client.get(
+        f"/api/v1/media/images/{(await bearer(client, users[Role.CASHIER]))['Authorization'].split()[1]}"
+    )
+    assert login.status_code == 401, "токен входа — не ссылка на фото"
+    key = str(images.json()[0]["object_key"])
+    missing = links.issue(f"{key.rsplit('/', 1)[0]}/{uuid4()}.jpg", container.clock.now())
+    assert (await client.get(f"/api/v1/media/images/{missing}")).status_code == 404
+    outside = links.issue("../../etc/passwd", container.clock.now())
+    assert (await client.get(f"/api/v1/media/images/{outside}")).status_code == 404
+
+
+def _hik_xml(plate: str) -> str:
+    return f"""<?xml version="1.0" encoding="UTF-8"?>
+    <EventNotificationAlert version="2.0" xmlns="http://www.hikvision.com/ver20/XMLSchema">
+      <ipAddress>10.10.1.5</ipAddress><dateTime>{datetime.now(tz=UTC).isoformat()}</dateTime>
+      <eventType>ANPR</eventType>
+      <ANPR><licensePlate>{plate}</licensePlate><confidenceLevel>97</confidenceLevel><direction>forward</direction>
+      <country>UZ</country></ANPR>
+    </EventNotificationAlert>"""
 
 
 @pytest.mark.skipif(sys.platform != "linux", reason="mc binary")

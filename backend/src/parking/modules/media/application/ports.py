@@ -22,6 +22,17 @@ class ObjectStore(Protocol):
 
     async def presign_get(self, key: str, *, ttl_seconds: int) -> str: ...
     async def put_object(self, key: str, data: bytes) -> None: ...
+    async def get_object(self, key: str) -> bytes | None:
+        """Байты объекта (None — нет такого); для отдачи фото через API, когда браузеру хранилище не видно."""
+        ...
+
+
+class ImageLinks(Protocol):
+    """Подписанная короткоживущая ссылка на фото через API (стенд площадки: MinIO браузеру недоступен)."""
+
+    def issue(self, key: str, now: datetime) -> str: ...
+
+    def verify(self, token: str, now: datetime) -> str: ...
 
 
 class SessionImageSource(Protocol):

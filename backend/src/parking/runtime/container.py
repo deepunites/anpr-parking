@@ -99,6 +99,7 @@ from parking.modules.integrations.infrastructure.sender import HttpWebhookSender
 from parking.modules.media.application.service import MediaRepositories, MediaService
 from parking.modules.media.application.video import VideoService
 from parking.modules.media.infrastructure.clip_tokens import JwtClipTokens
+from parking.modules.media.infrastructure.image_links import JwtImageLinks
 from parking.modules.media.infrastructure.pending import RedisPendingFrames
 from parking.modules.media.infrastructure.repositories import SqlMediaRepository
 from parking.modules.media.infrastructure.s3 import S3ObjectStore
@@ -481,6 +482,16 @@ def build_container(settings: Settings, database: Database, *, clock: Clock | No
         put_ttl_seconds=settings.s3_presign_put_ttl_seconds,
         get_ttl_seconds=settings.s3_presign_get_ttl_seconds,
         pending=RedisPendingFrames(redis),
+        image_links=(
+            JwtImageLinks(
+                private_key_pem=settings.jwt_private_key.get_secret_value(),
+                public_key_pem=settings.jwt_public_key,
+                issuer=settings.jwt_issuer,
+                ttl=timedelta(seconds=settings.s3_presign_get_ttl_seconds),
+            )
+            if settings.media_proxy
+            else None
+        ),
     )
     video = VideoService(
         archive=(

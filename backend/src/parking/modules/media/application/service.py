@@ -11,6 +11,7 @@ from uuid import UUID, uuid4
 from parking.modules.devices.application.contracts import CameraPrincipal
 from parking.modules.identity.application.contracts import CurrentUser
 from parking.modules.media.application.ports import (
+    ImageLinks,
     MediaRepository,
     ObjectStore,
     PendingFrames,
@@ -26,6 +27,7 @@ from parking.shared.clock import Clock
 from parking.shared.errors import NotFoundError, ValidationError
 
 log = get_logger("media")
+IMAGE_PATH = "/api/v1/media/images/"
 
 
 @dataclass(frozen=True, slots=True)
@@ -57,6 +59,7 @@ class MediaService:
         get_ttl_seconds: int,
         pending: PendingFrames | None = None,
         pending_ttl_seconds: int = 6 * 3600,
+        image_links: ImageLinks | None = None,
     ) -> None:
         self._store = store
         self._pending = pending
@@ -68,6 +71,7 @@ class MediaService:
         self._max_bytes = max_bytes
         self._put_ttl = put_ttl_seconds
         self._get_ttl = get_ttl_seconds
+        self._links = image_links
 
     async def presign_upload(self, principal: CameraPrincipal) -> PresignedUpload:
         """Камера получает URL и ключ; ключ навязан сервером (tenant/lot/camera из ключа камеры)."""
@@ -124,6 +128,18 @@ class MediaService:
         metrics.media_pending_frames.set(await self._pending.length())
         return sent, deferred
 
+    async def image(self, token: str) -> bytes:
+        """Фото по подписанной ссылке из session_images (401 — ссылка чужая или устарела, 404 — фото нет)."""
+        if self._links is None:
+            raise NotFoundError("image links are not enabled")
+        key = self._links.verify(token, self._clock.now())
+        if parse_key(key) is None:
+            raise NotFoundError("image not found")
+        data = await self._store.get_object(key)
+        if data is None:
+            raise NotFoundError("image not found")
+        return data
+
     def key_belongs_to(self, key: str, tenant_id: UUID, lot_id: UUID, camera_id: UUID) -> bool:
         return key_belongs_to(key, tenant_id, lot_id, camera_id)
 
@@ -137,7 +153,10 @@ class MediaService:
             if parts is None or parts.tenant_id != actor.tenant_id:
                 log.error("media_key_tenant_mismatch", event_id=str(event_id))
                 continue
-            url = await self._store.presign_get(key, ttl_seconds=self._get_ttl)
+            if self._links is not None:  # стенд площадки: фото — через API, хранилище браузеру не видно
+                url = IMAGE_PATH + self._links.issue(key, self._clock.now())
+            else:
+                url = await self._store.presign_get(key, ttl_seconds=self._get_ttl)
             images.append(SessionImage(event_id, key, event_time, url, self._get_ttl))
         if not rows:
             raise NotFoundError("session has no images")

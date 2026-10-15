@@ -64,6 +64,16 @@ class S3ObjectStore:
         )
         return url
 
+    async def get_object(self, key: str) -> bytes | None:
+        s3 = await self._s3()
+        try:
+            response = await s3.get_object(Bucket=self._bucket, Key=key)
+        except s3.exceptions.NoSuchKey:
+            return None
+        async with response["Body"] as body:
+            data: bytes = await body.read()
+        return data
+
     async def put_object(self, key: str, data: bytes) -> None:
         s3 = await self._s3()
         await s3.put_object(Bucket=self._bucket, Key=key, Body=data, ContentType=CONTENT_TYPE)

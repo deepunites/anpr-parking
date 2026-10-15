@@ -5,7 +5,7 @@ from typing import Annotated, Any, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, Field
 
 from parking.api.deps import PUBLIC, get_container, permission_extra, require
@@ -273,6 +273,18 @@ async def session_videos(
             for v in videos
         ],
     )
+
+
+@router.get(
+    "/media/images/{token}",
+    response_class=Response,
+    openapi_extra=PUBLIC,
+    responses={200: {"content": {"image/jpeg": {}}}},
+)
+async def media_image(token: str, container: Annotated[Container, Depends(get_container)]) -> Response:
+    """Фото номера по ссылке из /sessions/{id}/images, когда хранилище браузеру не видно (сервер площадки)."""
+    data = await container.media.image(token)
+    return Response(data, media_type="image/jpeg", headers={"Cache-Control": "private, max-age=300"})
 
 
 @router.get(

@@ -11550,6 +11550,46 @@
         ]
       }
     },
+    "/api/v1/media/images/{token}": {
+      "get": {
+        "description": "Фото номера по ссылке из /sessions/{id}/images, когда хранилище браузеру не видно (сервер площадки).",
+        "operationId": "media_image_api_v1_media_images__token__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "token",
+            "required": true,
+            "schema": {
+              "title": "Token",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "image/jpeg": {}
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Media Image",
+        "tags": [
+          "sessions"
+        ],
+        "x-public": true
+      }
+    },
     "/api/v1/payments/webhook/{provider}": {
       "post": {
         "description": "Payme Merchant API (JSON-RPC, ?merchant=<id>) и Click SHOP API (Prepare/Complete). Подпись → окно времени →\ninbox (дедуп) → применение → ответ по протоколу провайдера.",
