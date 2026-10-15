@@ -32,7 +32,7 @@ app.conf.update(
     },
     beat_schedule={
         "recover-sagas": {"task": "parking.saga.recover", "schedule": schedule(30.0)},
-        "sweep-stale-sessions": {"task": "parking.maintenance.sweep_stale", "schedule": schedule(600.0)},
+        "sweep-stale-sessions": {"task": "parking.maintenance.sweep_stale", "schedule": schedule(300.0)},
         "camera-health": {"task": "parking.maintenance.camera_health", "schedule": schedule(30.0)},
         "payments-verify": {"task": "parking.payments.verify_pending", "schedule": schedule(60.0)},
         "payments-orphans": {"task": "parking.payments.replay_orphans", "schedule": schedule(60.0)},
@@ -102,10 +102,12 @@ def execute_barrier_command(tenant_id: str, command_id: str) -> str:
 
 @app.task(name="parking.maintenance.sweep_stale")
 def sweep_stale(tenant_id: str | None = None) -> int:
+    """По расписанию (без аргумента) — все площадки: старые сессии → ORPHAN, счётчик занятости по базе.
+    Раньше без tenant_id задача ничего не делала — автоматическая чистка по max_session_hours не работала."""
     c = container()
     if tenant_id is not None:
         return run_sync(c.parking.sweep_stale(UUID(tenant_id)))
-    return 0
+    return run_sync(c.parking.maintain_lots(c.saga_scanner))
 
 
 @app.task(name="parking.maintenance.camera_health")

@@ -508,6 +508,13 @@ class SqlSagaScanner:
             )
             return [DueSaga(tenant_id=r.tenant_id, saga_id=r.id) for r in rows]
 
+    async def active_lots(self) -> list[tuple[UUID, UUID]]:
+        async with self._factory() as session, session.begin():
+            rows = await session.execute(
+                text("SELECT tenant_id, id FROM parking_lot WHERE active ORDER BY tenant_id, id")
+            )
+            return [(r.tenant_id, r.id) for r in rows]
+
 
 class SqlCorrectionRepository:
     def __init__(self, session: AsyncSession) -> None:

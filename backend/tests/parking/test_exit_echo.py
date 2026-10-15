@@ -20,7 +20,11 @@ from tests.support.parking_fixtures import entry_cmd, exit_cmd, subscription_dec
 
 
 def _plate() -> PlateNumber:
-    return PlateNumber.parse(f"01X{uuid4().int % 900 + 100}XX")
+    n = uuid4().int
+    letters = "ABCDEFGHJKLMNPRSTUVWXYZ"
+    return PlateNumber.parse(
+        f"{10 + n % 90}{letters[n // 90 % 23]}{100 + n // 2070 % 900}{letters[n // 1863000 % 23]}{letters[n // 42849000 % 23]}"
+    )
 
 
 async def _sessions(owner: asyncpg.Connection, pl_session: UUID) -> list[str]:

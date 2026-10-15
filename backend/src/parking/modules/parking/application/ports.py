@@ -117,6 +117,10 @@ class SagaScanner(Protocol):
         """Кросс-tenant выборка просроченных шагов (роль app_maintenance) — восстановление после падений."""
         ...
 
+    async def active_lots(self) -> list[tuple[UUID, UUID]]:
+        """(tenant_id, lot_id) действующих площадок всех клиентов — для обслуживания (сессии, счётчик занятости)."""
+        ...
+
 
 class CorrectionRepository(Protocol):
     async def add(

@@ -912,14 +912,13 @@ class ParkingService:
                 if await repos.sagas.active_for_session(session.id) is not None:
                     skipped += 1  # машина как раз выезжает — сессию закроет сага
                     continue
-                occupied = session.occupies_space
                 session.mark_orphan(STALE_MANUAL)
                 await repos.sessions.save(session)
                 await self._audit(repos, actor, "SESSION_ORPHANED_MANUAL", session, reason.strip())
                 self._emit_session_events(uow, session)
-                if occupied:
-                    uow.after_commit(self._decrement(session.lot_id))
                 closed += 1
+        # счётчик занятости — по базе, а не вычитанием по одной: до чистки он мог уже разойтись с реальностью
+        await self.reconcile_occupancy(actor.tenant_id, lot_id)
         log.info("stale_sessions_closed", lot_id=str(lot_id), closed=closed, skipped=skipped, hours=older_than_hours)
         return StaleSessionsResult(older_than=cutoff, found=len(stale), closed=closed, skipped_in_exit=skipped)
 
@@ -1205,6 +1204,19 @@ class ParkingService:
         self._check_scope(actor, lot_id)
         async with self._uow_factory(actor.tenant_id) as uow:
             return await self._repos(uow).sessions.count_occupying_by_entry_camera(lot_id)
+
+    async def maintain_lots(self, scanner: SagaScanner) -> int:
+        """Обслуживание раз в несколько минут: сессии старше max_session_hours → ORPHAN (по клиентам) и счётчик
+        занятости каждой площадки = точное число машин в базе (Redis-проекция расходится при сбоях и чистках).
+        Возвращает число закрытых сессий."""
+        closed = 0
+        tenants: set[UUID] = set()
+        for tenant_id, lot_id in await scanner.active_lots():
+            if tenant_id not in tenants:
+                tenants.add(tenant_id)
+                closed += await self.sweep_stale(tenant_id)
+            await self.reconcile_occupancy(tenant_id, lot_id)
+        return closed
 
     async def reconcile_occupancy(self, tenant_id: UUID, lot_id: UUID) -> int:
         async with self._uow_factory(tenant_id) as uow:
