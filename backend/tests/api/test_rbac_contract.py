@@ -238,6 +238,7 @@ SAMPLES: dict[tuple[str, str], dict[str, Any]] = {
     ("GET", "/api/v1/sessions/{session_id}/quote"): {"path": {"session_id": "{session_id}"}},
     ("POST", "/api/v1/sessions/{session_id}/payments"): {"path": {"session_id": "{session_id}"}, "json": {}},
     ("GET", "/api/v1/payments/{payment_id}"): {"path": {"payment_id": "{payment_id}"}},
+    ("POST", "/api/v1/payments/{payment_id}/receipt"): {"path": {"payment_id": "{payment_id}"}},
     ("POST", "/api/v1/payments/{payment_id}/confirm-cash"): {"path": {"payment_id": "{payment_id}"}, "json": {}},
     ("POST", "/api/v1/payments/{payment_id}/checkout"): {
         "path": {"payment_id": "{payment_id}"},

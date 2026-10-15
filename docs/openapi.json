@@ -5055,6 +5055,28 @@
         "title": "ReasonRequest",
         "type": "object"
       },
+      "ReceiptOut": {
+        "properties": {
+          "amount": {
+            "$ref": "#/components/schemas/MoneyOut"
+          },
+          "printed": {
+            "title": "Printed",
+            "type": "boolean"
+          },
+          "receipt_no": {
+            "title": "Receipt No",
+            "type": "string"
+          }
+        },
+        "required": [
+          "printed",
+          "receipt_no",
+          "amount"
+        ],
+        "title": "ReceiptOut",
+        "type": "object"
+      },
       "Recognition": {
         "properties": {
           "bounding_box": {
@@ -11742,6 +11764,58 @@
         ],
         "x-permission": [
           "payment:create_cash"
+        ]
+      }
+    },
+    "/api/v1/payments/{payment_id}/receipt": {
+      "post": {
+        "description": "Бумажный чек оплаченного платежа на принтер кассы (ESC/POS по сети): после приёма наличных и повторно.\n503 PRINTER_NOT_CONFIGURED / PRINTER_UNAVAILABLE — оплата от этого не зависит.",
+        "operationId": "print_receipt_api_v1_payments__payment_id__receipt_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "payment_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Payment Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReceiptOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Print Receipt",
+        "tags": [
+          "payments"
+        ],
+        "x-permission": [
+          "payment:read"
         ]
       }
     },

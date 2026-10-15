@@ -55,7 +55,7 @@ export const uz: Dict = {
     newPlate: "Yangi raqam", reason: "Sabab", save: "Saqlash", cancel: "Bekor qilish", openExit: "Chiqishni ochish", openExitTitle: "Chiqishni qo‘lda ochish",
     openConfirm: "Shlagbaumni ochish", payCash: "Naqd qabul qilish", amountDue: "To‘lovga", amountFromServer: "Summa server tomonidan hisoblangan",
     confirmCash: "Naqd to‘lovni tasdiqlash", prepay: "Naqd to‘lash (oldindan)", prepayHint: "Oldindan to‘lov: to‘lovdan keyin qo‘shimcha to‘lovsiz chiqish vaqti bor", paid: "To‘langan", noPayments: "To‘lovlar yo‘q",
-    payments: "To‘lovlar", confirmed: "To‘lov qabul qilindi", closed: "Yopilgan", saga: "Chiqish", noObligation: "To‘lanmagan majburiyat yo‘q",
+    payments: "To‘lovlar", confirmed: "To‘lov qabul qilindi", printReceipt: "Chek chop etish", receiptPrinted: "Chek chop etildi", receiptFailed: "Chek chop etilmadi — printerni tekshiring (to‘lov qabul qilindi)", closed: "Yopilgan", saga: "Chiqish", noObligation: "To‘lanmagan majburiyat yo‘q",
     reasonRequired: "Sababni ko‘rsating (kamida 3 belgi)", orig: "Dastlabki tanib olish saqlanadi (I-16)",
     sagaState: "Chiqish bosqichi", access: "Kirish turi", amountNow: "hozir to‘lanadi", recalc: "har daqiqada qayta hisoblanadi", corrected: "Raqam tuzatildi", opened: "Shlagbaum ochildi",
   },

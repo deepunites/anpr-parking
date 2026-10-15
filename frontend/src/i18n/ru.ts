@@ -58,7 +58,7 @@ export const ru = {
     newPlate: "Новый номер", reason: "Причина", save: "Сохранить", cancel: "Отмена", openExit: "Открыть выезд", openExitTitle: "Ручное открытие выезда",
     openConfirm: "Открыть шлагбаум", payCash: "Принять наличные", amountDue: "К оплате", amountFromServer: "Сумма посчитана сервером",
     confirmCash: "Подтвердить оплату наличными", prepay: "Принять наличные", prepayHint: "Предоплата: после оплаты есть время на выезд без доплаты", paid: "Оплачено", noPayments: "Платежей нет",
-    payments: "Платежи", confirmed: "Оплата принята", closed: "Закрыта", saga: "Выезд", noObligation: "Нет неоплаченного обязательства",
+    payments: "Платежи", confirmed: "Оплата принята", printReceipt: "Печать чека", receiptPrinted: "Чек напечатан", receiptFailed: "Чек не напечатан — проверьте принтер (оплата принята)", closed: "Закрыта", saga: "Выезд", noObligation: "Нет неоплаченного обязательства",
     reasonRequired: "Укажите причину (не менее 3 символов)", orig: "Исходное распознавание сохраняется (I-16)",
     sagaState: "Этап выезда", access: "Доступ", amountNow: "к оплате сейчас", recalc: "пересчёт каждую минуту", corrected: "Номер исправлен", opened: "Стрела открыта",
   },

@@ -115,6 +115,7 @@ API-ключ внешней системы получает только пра�
 | GET | `/api/v1/payments/{payment_id}` | `payment:read` |
 | POST | `/api/v1/payments/{payment_id}/checkout` | `payment:read` |
 | POST | `/api/v1/payments/{payment_id}/confirm-cash` | `payment:create_cash` |
+| POST | `/api/v1/payments/{payment_id}/receipt` | `payment:read` |
 | GET | `/api/v1/payments/{payment_id}/refunds` | `payment:read` |
 | POST | `/api/v1/payments/{payment_id}/refunds` | `payment:refund` |
 | GET | `/api/v1/plans` | публичный |

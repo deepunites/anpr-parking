@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState, type FormEvent } from "react";
-import { Car, Pencil, Video, X } from "lucide-react";
+import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
+import { Car, Pencil, Printer, Video, X } from "lucide-react";
 import { useTranslation } from "@/i18n";
 import { useQuery } from "@tanstack/react-query";
 import { api, unwrap } from "@/api/client";
-import { keys, useConfirmCash, useCorrectPlate, useOpenExit, usePrepayCash, useQuote, useSession, useSessionImages, useSessionPayments, useSessionVideos, useSetSessionVehicle } from "@/api/hooks";
+import { ApiError } from "@/api/errors";
+import { keys, useConfirmCash, useCorrectPlate, useOpenExit, usePrepayCash, useQuote, useSession, useSessionImages, useSessionPayments, useSessionVideos, useSetSessionVehicle, usePrintReceipt } from "@/api/hooks";
 import { PlateInput, isPlateValid } from "@/components/vehicle/PlateInput";
 import { VehicleFields } from "@/components/vehicle/VehicleFields";
 import { colorSwatch, vehicleLabel, type VehicleValue } from "@/components/vehicle/vehicle";
@@ -116,6 +117,26 @@ export function SessionPanel({ sessionId, timeZone, onClose }: { sessionId: stri
   const openExit = useOpenExit(sessionId);
   const confirmCash = useConfirmCash(sessionId);
   const prepay = usePrepayCash(sessionId);
+  const printReceipt = usePrintReceipt();
+  // оплата принята → чек сразу на принтер кассы; принтер не настроен — молча, выключен — предупреждение (оплата уже есть)
+  const { mutate: sendReceipt } = printReceipt;
+  const print = useCallback(
+    (paymentId: string, explicit = false) =>
+      sendReceipt(paymentId, {
+        onSuccess: () => toast.ok(t("session.receiptPrinted")),
+        onError: (e) => {
+          if (explicit || (e instanceof ApiError ? e.code : "") !== "PRINTER_NOT_CONFIGURED") toast.warn(t("session.receiptFailed"));
+        },
+      }),
+    [sendReceipt, t],
+  );
+  const onPaid = useCallback(
+    (payment: { id: string }) => {
+      toast.ok(t("session.confirmed"));
+      print(payment.id);
+    },
+    [print, t],
+  );
   const [correcting, setCorrecting] = useState(false);
   const [opening, setOpening] = useState(false);
   const [newPlate, setNewPlate] = useState("");
@@ -139,15 +160,15 @@ export function SessionPanel({ sessionId, timeZone, onClose }: { sessionId: stri
       if (!(e.ctrlKey || e.metaKey) || e.key !== "Enter" || correcting || opening) return;
       if (canCash && pending && !confirmCash.isPending) {
         e.preventDefault();
-        confirmCash.mutate({ paymentId: pending.id, amountMinor: pending.amount_minor }, { onSuccess: () => toast.ok(t("session.confirmed")) });
+        confirmCash.mutate({ paymentId: pending.id, amountMinor: pending.amount_minor }, { onSuccess: onPaid });
       } else if (canCash && !pending && quote.data && isActive && !prepay.isPending) {
         e.preventDefault();
-        prepay.mutate({ amount_minor: quote.data.amount_minor }, { onSuccess: () => toast.ok(t("session.confirmed")) });
+        prepay.mutate({ amount_minor: quote.data.amount_minor }, { onSuccess: onPaid });
       }
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [canCash, pending, quote.data, isActive, confirmCash, prepay, correcting, opening, t]);
+  }, [canCash, pending, quote.data, isActive, confirmCash, prepay, correcting, opening, t, onPaid]);
 
   if (session.isPending) return <Skeleton className="h-64 w-full" />;
   if (session.isError) return <ErrorBox error={session.error} onRetry={() => void session.refetch()} />;
@@ -206,6 +227,11 @@ export function SessionPanel({ sessionId, timeZone, onClose }: { sessionId: stri
               <Badge tone={toneFor(p.status)}>{t(`status.${p.status}`, { defaultValue: p.status })}</Badge>
               <Money formatted={p.amount.formatted} size="sm" />
               <span className="font-semibold text-muted">{p.method ?? ""}</span>
+              {p.status === "PAID" && (
+                <Button variant="ghost" size="sm" className="ml-auto" disabled={printReceipt.isPending} onClick={() => print(p.id, true)} data-testid="print-receipt">
+                  <Printer className="h-4 w-4" aria-hidden="true" /> {t("session.printReceipt")}
+                </Button>
+              )}
             </li>
           ))}
         </ul>
@@ -252,11 +278,11 @@ export function SessionPanel({ sessionId, timeZone, onClose }: { sessionId: stri
       {/* Деньги — отдельной строкой на всю ширину (сумма не обрезается), ниже — открыть выезд и исправить номер */}
       <div className="mt-auto flex flex-col gap-2">
         {canCash && pending ? (
-          <Button variant="money" size="lg" className="w-full" disabled={confirmCash.isPending} onClick={() => confirmCash.mutate({ paymentId: pending.id, amountMinor: pending.amount_minor }, { onSuccess: () => toast.ok(t("session.confirmed")) })} data-testid="confirm-cash">
+          <Button variant="money" size="lg" className="w-full" disabled={confirmCash.isPending} onClick={() => confirmCash.mutate({ paymentId: pending.id, amountMinor: pending.amount_minor }, { onSuccess: onPaid })} data-testid="confirm-cash">
             {t("session.payCash")} · {pending.amount.formatted}
           </Button>
         ) : canCash && quote.data && isActive ? (
-          <Button variant="money" size="lg" className="w-full" disabled={prepay.isPending} title={t("session.prepayHint")} onClick={() => prepay.mutate({ amount_minor: quote.data.amount_minor }, { onSuccess: () => toast.ok(t("session.confirmed")) })} data-testid="prepay-cash">
+          <Button variant="money" size="lg" className="w-full" disabled={prepay.isPending} title={t("session.prepayHint")} onClick={() => prepay.mutate({ amount_minor: quote.data.amount_minor }, { onSuccess: onPaid })} data-testid="prepay-cash">
             {t("session.prepay")} · {quote.data.amount.formatted}
           </Button>
         ) : null}

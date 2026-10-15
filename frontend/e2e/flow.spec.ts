@@ -51,6 +51,8 @@ test("operator flow: login → live → entry → plate correction → cash → 
   await expect(page.getByTestId("amount-due")).toContainText("сум");
   await page.getByTestId("confirm-cash").click();
   await expect(page.locator("[data-testid='payment-row'][data-status='PAID']")).toBeVisible();
+  // чек — на принтер кассы; на стенде принтера нет: автопечать молчит, кнопка повторной печати есть
+  await expect(page.locator("[data-testid='payment-row'][data-status='PAID'] [data-testid='print-receipt']")).toBeVisible();
 
   // сага: платёж → шлагбаума у площадки нет → сессия закрыта; лента показывает выезд
   await expect(feed.locator("li[data-type='SESSION_CLOSED']").first()).toBeVisible({ timeout: 30_000 });

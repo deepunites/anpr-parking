@@ -146,6 +146,9 @@ class Settings(BaseSettings):
     video_clip_before_seconds: int = Field(default=10, ge=0, le=120, description="Ролик сессии: секунд до события")
     video_clip_after_seconds: int = Field(default=20, ge=1, le=300, description="Ролик сессии: секунд после события")
     video_clip_cache_dir: str = "/tmp/parking-video-clips"  # noqa: S108 — единственный пишущий каталог образа
+    receipt_printer: str = Field(
+        default="", description="Принтер чеков кассы (ESC/POS по сети): «IP:порт», например 192.168.13.240:9100"
+    )
     video_link_ttl_seconds: int = Field(default=300, ge=30, le=3600, description="Сколько живёт ссылка на ролик")
     vault_addr: str | None = None
     vault_role_id: SecretStr | None = None

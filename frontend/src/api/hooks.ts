@@ -230,6 +230,14 @@ export function useConfirmCash(sessionId: string) {
   });
 }
 
+/** Чек оплаченного платежа на принтер кассы (сервер печатает по сети); 503 — принтер не настроен или выключен. */
+export function usePrintReceipt() {
+  return useMutation({
+    mutationFn: async (paymentId: string) =>
+      unwrap(await api.POST("/api/v1/payments/{payment_id}/receipt", { params: { path: { payment_id: paymentId } } })),
+  });
+}
+
 export function usePrepayCash(sessionId: string) {
   const qc = useQueryClient();
   return useMutation({

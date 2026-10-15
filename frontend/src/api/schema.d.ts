@@ -1049,6 +1049,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/payments/{payment_id}/receipt": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Print Receipt
+         * @description Бумажный чек оплаченного платежа на принтер кассы (ESC/POS по сети): после приёма наличных и повторно.
+         *     503 PRINTER_NOT_CONFIGURED / PRINTER_UNAVAILABLE — оплата от этого не зависит.
+         */
+        post: operations["print_receipt_api_v1_payments__payment_id__receipt_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/payments/{payment_id}/refunds": {
         parameters: {
             query?: never;
@@ -3733,6 +3754,14 @@ export interface components {
              * @description Обязательное обоснование ручного действия (I-15)
              */
             reason: string;
+        };
+        /** ReceiptOut */
+        ReceiptOut: {
+            amount: components["schemas"]["MoneyOut"];
+            /** Printed */
+            printed: boolean;
+            /** Receipt No */
+            receipt_no: string;
         };
         /** Recognition */
         Recognition: {
@@ -6857,6 +6886,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PaymentOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    print_receipt_api_v1_payments__payment_id__receipt_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                payment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReceiptOut"];
                 };
             };
             /** @description Validation Error */

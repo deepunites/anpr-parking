@@ -380,6 +380,28 @@ async def confirm_cash(
     )
 
 
+class ReceiptOut(BaseModel):
+    printed: bool
+    receipt_no: str
+    amount: MoneyOut
+
+
+@router.post(
+    "/payments/{payment_id}/receipt",
+    response_model=ReceiptOut,
+    openapi_extra=permission_extra(Permission.PAYMENT_READ),
+)
+async def print_receipt(
+    payment_id: UUID,
+    user: Annotated[CurrentUser, Depends(require(Permission.PAYMENT_READ))],
+    container: Annotated[Container, Depends(get_container)],
+) -> ReceiptOut:
+    """Бумажный чек оплаченного платежа на принтер кассы (ESC/POS по сети): после приёма наличных и повторно.
+    503 PRINTER_NOT_CONFIGURED / PRINTER_UNAVAILABLE — оплата от этого не зависит."""
+    receipt = await container.receipts.print_payment(user, payment_id)
+    return ReceiptOut(printed=True, receipt_no=receipt.receipt_no, amount=MoneyOut(**receipt.amount.to_dict()))
+
+
 @router.post(
     "/payments/{payment_id}/checkout",
     response_model=CheckoutOut,

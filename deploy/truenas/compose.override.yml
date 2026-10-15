@@ -20,3 +20,7 @@ services:
         condition: service_started
         required: false  # в профиле site имитатора нет
 
+  api:
+    environment:
+      # принтер чеков кассы (ESC/POS по сети), например 192.168.13.240:9100; пусто — чеки не печатаются
+      PARKING_RECEIPT_PRINTER: ${PARKING_RECEIPT_PRINTER:-}

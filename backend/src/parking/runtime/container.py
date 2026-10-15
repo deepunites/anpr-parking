@@ -35,9 +35,11 @@ from parking.modules.audit.infrastructure.writer import SqlAuditWriter
 from parking.modules.billing.application.cash import CashierService
 from parking.modules.billing.application.common import BillingRepositories
 from parking.modules.billing.application.online import OnlinePaymentService
+from parking.modules.billing.application.receipt import ReceiptService
 from parking.modules.billing.application.reconciliation import ReconciliationService
 from parking.modules.billing.application.refunds import RefundService
 from parking.modules.billing.application.webhooks import WebhookService
+from parking.modules.billing.infrastructure.escpos import EscPosNetworkPrinter, NoPrinter
 from parking.modules.billing.infrastructure.gateways import HttpGatewayRegistry
 from parking.modules.billing.infrastructure.obligations import SqlPaymentObligations
 from parking.modules.billing.infrastructure.repositories import (
@@ -209,6 +211,7 @@ class Container:
     object_store: S3ObjectStore
     drivers: DriverRegistry
     cashier: CashierService
+    receipts: ReceiptService
     refunds: RefundService
     online_payments: OnlinePaymentService
     webhooks: WebhookService
@@ -580,6 +583,8 @@ def build_container(settings: Settings, database: Database, *, clock: Clock | No
         repos=subscription_repos,
         directory=SqlPlatformDirectory(database.session_factory(Pool.MAINTENANCE)),
     )
+    lot_service = LotService(uow_factory=uow_factory, repos=tenancy_repos, gate=subscriptions)
+    cashier = CashierService(uow_factory=uow_factory, repos=billing_repos, parking=parking, clock=clock)
     return Container(
         settings=settings,
         database=database,
@@ -598,7 +603,7 @@ def build_container(settings: Settings, database: Database, *, clock: Clock | No
         owner_dashboard=owner_dashboard,
         platform_dashboard=platform_dashboard,
         prometheus=prometheus,
-        lots=LotService(uow_factory=uow_factory, repos=tenancy_repos, gate=subscriptions),
+        lots=lot_service,
         layouts=LayoutService(uow_factory=uow_factory, repos=layout_repos),
         tariffs=TariffAdminService(uow_factory=uow_factory, repos=tariff_repos),
         redis=redis,
@@ -681,7 +686,13 @@ def build_container(settings: Settings, database: Database, *, clock: Clock | No
         db_breaker=db_breaker,
         object_store=object_store,
         drivers=drivers,
-        cashier=CashierService(uow_factory=uow_factory, repos=billing_repos, parking=parking, clock=clock),
+        cashier=cashier,
+        receipts=ReceiptService(
+            printer=EscPosNetworkPrinter(settings.receipt_printer) if settings.receipt_printer.strip() else NoPrinter(),
+            payment_lookup=cashier.get_payment,
+            session_lookup=parking.get_session,
+            lot_lookup=lot_service.get,
+        ),
         refunds=RefundService(uow_factory=uow_factory, repos=billing_repos, gateways=gateways, clock=clock),
         online_payments=OnlinePaymentService(
             uow_factory=uow_factory, repos=billing_repos, gateways=gateways, clock=clock
