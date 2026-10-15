@@ -42,7 +42,7 @@ def test_receipt_layout_fits_80mm_and_reads_like_a_receipt() -> None:
     assert "1 ч 07 мин" in text and "2 ч 00 мин" in text  # стоял 1:07, оплачено два начатых часа
     assert "13 000,00 сум" in text and "наличные" in text and "AB12CD34" in text
     payload = render(lines)
-    assert payload.startswith(b"\x1b@\x1bt\x11") and payload.endswith(b"\x1dVB\x00")  # PC866, отрезка
+    assert payload.startswith(b"\x1b@\x1c.\x1bt\x11") and payload.endswith(b"\x1dVB\x00")  # PC866, отрезка
     assert "Чек оплаты парковки".encode("cp866") in payload
     free = receipt_lines(dataclasses.replace(data, amount=Money(0), method="GRACE"))
     assert any("бесплатное время" in line.text for line in free)
@@ -60,7 +60,7 @@ async def test_paid_payment_is_printed_on_network_printer(
     server = await asyncio.start_server(printer, "127.0.0.1", 0)
     port = server.sockets[0].getsockname()[1]
     receipts = ReceiptService(
-        printer=EscPosNetworkPrinter(f"127.0.0.1:{port}"),
+        printer=EscPosNetworkPrinter(f"127.0.0.1:{port}", linger=0.0),
         payment_lookup=container.cashier.get_payment,
         session_lookup=container.parking.get_session,
         lot_lookup=container.lots.get,

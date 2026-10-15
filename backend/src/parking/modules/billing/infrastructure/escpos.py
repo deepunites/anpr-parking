@@ -12,7 +12,8 @@ from parking.shared.errors import ServiceUnavailableError
 
 log = get_logger("billing.receipt")
 
-ESC, GS = b"\x1b", b"\x1d"
+ESC, GS, FS = b"\x1b", b"\x1d", b"\x1c"
+LINGER_SECONDS = 1.0  # сетевой модуль принтера не успевает передать чек на печать, если соединение сразу закрыть
 _PLAIN = str.maketrans({"—": "-", "–": "-", "«": '"', "»": '"', "‘": "'", "’": "'", "ʻ": "'", "ʼ": "'", " ": " "})
 
 
@@ -22,7 +23,7 @@ def encode(text: str) -> bytes:
 
 
 def render(lines: list[ReceiptLine]) -> bytes:
-    out = bytearray(ESC + b"@" + ESC + b"t" + bytes([17]))  # сброс, кодовая страница PC866
+    out = bytearray(ESC + b"@" + FS + b"." + ESC + b"t" + bytes([17]))  # сброс, без китайского режима, PC866
     for line in lines:
         out += ESC + b"a" + (b"\x01" if line.center else b"\x00")
         out += ESC + b"E" + (b"\x01" if line.bold else b"\x00")
@@ -33,10 +34,11 @@ def render(lines: list[ReceiptLine]) -> bytes:
 
 
 class EscPosNetworkPrinter:
-    def __init__(self, address: str, *, timeout: float = 5.0) -> None:
+    def __init__(self, address: str, *, timeout: float = 5.0, linger: float = LINGER_SECONDS) -> None:
         host, _, port = address.strip().rpartition(":")
         self._host, self._port = (host, int(port)) if host and port.isdigit() else (address.strip(), 9100)
         self._timeout = timeout
+        self._linger = linger
 
     @property
     def configured(self) -> bool:
@@ -48,6 +50,7 @@ class EscPosNetworkPrinter:
             _, writer = await asyncio.wait_for(asyncio.open_connection(self._host, self._port), self._timeout)
             writer.write(payload)
             await asyncio.wait_for(writer.drain(), self._timeout)
+            await asyncio.sleep(self._linger)
             writer.close()
             await asyncio.wait_for(writer.wait_closed(), self._timeout)
         except (OSError, TimeoutError) as exc:
