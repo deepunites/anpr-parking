@@ -89,6 +89,9 @@ ReposFactory = Callable[[UnitOfWork], ParkingRepositories]
 # Роли, которые работают с машинами на площадке: политика площадки «полные номера» открывает номер только им —
 # разработчику интеграций, наблюдателю и ролям платформы по-прежнему маска (PRIVACY §1, минимизация).
 FULL_PLATE_ROLES = frozenset({Role.OWNER, Role.TENANT_ADMIN, Role.MANAGER, Role.OPERATOR, Role.CASHIER})
+# Эхо выезда (стрела одна на въезд и выезд): камера въезда видит выезжающую машину через секунды после камеры выезда.
+EXIT_ECHO = timedelta(seconds=60)  # после выезда (или «выезда без въезда»)
+EXIT_WAIT = timedelta(minutes=30)  # пока идёт выезд — оплата у кассира, открытие стрелы
 STALE_BATCH = 2000  # за один раз; больше — повторить (останутся самые новые из старых)
 # closed_reason сессии — код (varchar(40), как REENTRY / MAX_SESSION_HOURS); причину сотрудника хранит аудит (I-15)
 CLOSED_MANUAL, ORPHANED_MANUAL, STALE_MANUAL = "CLOSED_MANUAL", "ORPHANED_MANUAL", "STALE_MANUAL"
@@ -146,6 +149,13 @@ class ParkingService:
         plate_hash = self._crypto.hash(cmd.tenant_id, cmd.plate)
         encrypted, version = self._crypto.encrypt(cmd.tenant_id, cmd.plate)
         vehicle = await repos.vehicles.upsert(plate_hash, encrypted, version, cmd.event_time)
+        exiting = await repos.sessions.exiting_session(
+            cmd.lot_id, vehicle.id, exited_since=cmd.event_time - EXIT_ECHO, saga_since=cmd.event_time - EXIT_WAIT
+        )
+        if exiting is not None:
+            # иначе «повторный въезд» закрыл бы выезжающую сессию вместе с оплатой и открыл стрелу без неё
+            log.info("entry_exit_echo", session_id=str(exiting), camera_id=str(cmd.camera_id))
+            return EntryResult(status=EntryStatus.ENTRY_EXIT_ECHO, session_id=exiting)
 
         blacklisted = cmd.decision.kind is AccessKind.BLACKLIST
         status = SessionStatus.ACTIVE
@@ -166,22 +176,9 @@ class ParkingService:
             entry_access_kind=cmd.decision.kind.value,
             review_reason=review,
         )
-        orphaned: UUID | None = None
-        try:
-            await repos.sessions.add(session)
-        except ConflictError:
-            existing = await repos.sessions.active_for_vehicle(cmd.lot_id, vehicle.id, for_update=True)
-            if existing is None:
-                raise
-            if cmd.event_time - existing.entry_time <= timedelta(minutes=lot.policies.reentry_window_minutes):
-                log.info("entry_duplicate_window", session_id=str(existing.id))
-                return EntryResult(status=EntryStatus.ENTRY_CONFIRMED, session_id=existing.id, duplicate=True)
-            existing.mark_orphan("REENTRY")  # A-07: машина уезжала мимо камеры
-            await repos.sessions.save(existing)
-            self._emit_session_events(uow, existing)
-            uow.after_commit(self._decrement(cmd.lot_id))
-            orphaned = existing.id
-            await repos.sessions.add(session)
+        orphaned, duplicate = await self._add_entry_session(uow, repos, lot, cmd, session)
+        if duplicate is not None:
+            return duplicate
 
         barrier_command_id: UUID | None = None
         result_status = EntryStatus.ENTRY_CONFIRMED
@@ -214,6 +211,28 @@ class ParkingService:
             barrier_command_id=barrier_command_id,
             orphaned_session_id=orphaned,
         )
+
+    async def _add_entry_session(
+        self, uow: UnitOfWork, repos: ParkingRepositories, lot: LotInfo, cmd: EntryCommand, session: ParkingSession
+    ) -> tuple[UUID | None, EntryResult | None]:
+        """Новая сессия въезда. Открытая сессия той же машины: в окне повторного въезда — дубль (готовый результат
+        вторым элементом), позже — машина уезжала мимо камеры: старая → ORPHAN «REENTRY» (её id первым элементом)."""
+        try:
+            await repos.sessions.add(session)
+            return None, None
+        except ConflictError:
+            existing = await repos.sessions.active_for_vehicle(cmd.lot_id, session.vehicle_id, for_update=True)
+            if existing is None:
+                raise
+            if cmd.event_time - existing.entry_time <= timedelta(minutes=lot.policies.reentry_window_minutes):
+                log.info("entry_duplicate_window", session_id=str(existing.id))
+                return None, EntryResult(status=EntryStatus.ENTRY_CONFIRMED, session_id=existing.id, duplicate=True)
+            existing.mark_orphan("REENTRY")  # A-07: машина уезжала мимо камеры
+            await repos.sessions.save(existing)
+            self._emit_session_events(uow, existing)
+            uow.after_commit(self._decrement(cmd.lot_id))
+        await repos.sessions.add(session)
+        return existing.id, None
 
     # ------------------------------------------------------------------- EXIT
     async def start_exit(self, cmd: ExitCommand) -> ExitResult:

@@ -303,6 +303,30 @@ class SqlSessionRepository:
         )
         return {r.camera: int(r.n) for r in rows}
 
+    async def exiting_session(
+        self, lot_id: UUID, vehicle_id: UUID, *, exited_since: datetime, saga_since: datetime
+    ) -> UUID | None:
+        row = (
+            await self._s.execute(
+                text(
+                    """
+                    SELECT s.id FROM parking_session s
+                    WHERE s.lot_id = :lot AND s.vehicle_id = :v AND (
+                        s.exit_time >= :exited
+                        OR (s.entry_unknown AND s.status = 'MANUAL_REVIEW' AND s.entry_time >= :exited)
+                        OR EXISTS (
+                            SELECT 1 FROM exit_saga g WHERE g.session_id = s.id
+                              AND g.state NOT IN ('COMPLETED', 'EXPIRED', 'CANCELLED') AND g.exit_event_time >= :saga
+                        )
+                    )
+                    ORDER BY s.entry_time DESC LIMIT 1
+                    """
+                ),
+                {"lot": lot_id, "v": vehicle_id, "exited": exited_since, "saga": saga_since},
+            )
+        ).first()
+        return None if row is None else row.id
+
     async def open_in_lot_before(self, lot_id: UUID, older_than: datetime, *, limit: int) -> list[ParkingSession]:
         rows = await self._s.execute(
             text(

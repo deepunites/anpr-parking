@@ -36,6 +36,7 @@ class EntryStatus(enum.StrEnum):
     ENTRY_DENIED_FULL = "ENTRY_DENIED_FULL"
     MANUAL_REVIEW = "MANUAL_REVIEW"
     LATE_ACCEPTED = "LATE_ACCEPTED"
+    ENTRY_EXIT_ECHO = "ENTRY_EXIT_ECHO"  # камера въезда увидела выезжающую машину — ни сессии, ни стрелы
 
 
 class ExitStatus(enum.StrEnum):
