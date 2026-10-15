@@ -11,10 +11,21 @@ describe("rulesFromForm", () => {
       price_per_hour: 300_000,
       rounding_mode: "UP",
       rounding_step_minutes: 15,
+      first_hour_prorated: false,
+      amount_step: null,
       daily_max: 3_000_000,
       overnight: null,
       weekday_overrides: null,
     });
+  });
+
+  it("per-minute first hour and the total rounded to 1000 sum (MediaPark: no small change)", () => {
+    const form = { ...base(), firstProrated: true, amountStep: "1000", step: "1" };
+    const rules = rulesFromForm(form)!;
+    expect(rules["first_hour_prorated"]).toBe(true);
+    expect(rules["amount_step"]).toBe(100_000);
+    expect(formFromRules(rules)).toMatchObject({ firstProrated: true, amountStep: "1000" });
+    expect(rulesFromForm({ ...form, amountStep: "0" })).toBeNull();
   });
 
   it("supports night price, free and special days, and an empty daily cap", () => {

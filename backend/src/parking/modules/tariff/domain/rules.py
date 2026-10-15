@@ -3,9 +3,11 @@
 Семантика (см. docs/TARIFF.md):
   grace_minutes          — длительность ≤ грейса: платить нечего; иначе оплачивается ВСЁ время с въезда
                            (грейс не вычитается)
-  first_hour_price       — первые 60 оплачиваемых минут — блок с фиксированной ценой
+  first_hour_price       — первые 60 оплачиваемых минут — блок с фиксированной ценой; first_hour_prorated —
+                           поминутно от этой цены (MediaPark: 16 минут — не целый час)
   price_per_hour         — далее поминутный прорейт от часовой цены
   rounding               — длительность округляется до шага (UP | DOWN | NEAREST), минимум один шаг после грейса
+  amount_step            — итог округляется до кратного (к ближайшему; 1000 сум — без мелочи на сдачу)
   daily_max              — потолок за локальный календарный день площадки
   overnight              — окно (может пересекать полночь), внутри которого действует своя часовая цена
   weekday_overrides      — переопределения по дню недели (0 = понедельник … 6 = воскресенье)
@@ -76,6 +78,8 @@ class TariffRules:
     overnight: OvernightWindow | None = None
     weekday_overrides: dict[int, DayOverride] = field(default_factory=dict)
     holiday_override: DayOverride | None = None
+    first_hour_prorated: bool = False
+    amount_step: Money | None = None
 
     def __post_init__(self) -> None:
         if not 0 <= self.grace_minutes <= MAX_MINUTES or not 1 <= self.rounding_step_minutes <= MAX_MINUTES:
@@ -84,6 +88,8 @@ class TariffRules:
         for m in (self.first_hour_price, self.price_per_hour, *(x for x in [self.daily_max] if x is not None)):
             if m.is_negative:
                 raise ValidationError("tariff prices must be non-negative")
+        if self.amount_step is not None and not self.amount_step.minor > 0:
+            raise ValidationError("amount_step must be positive")
         if any(k not in range(7) for k in self.weekday_overrides):
             raise ValidationError("weekday_overrides keys must be 0..6")
 
@@ -128,6 +134,8 @@ class TariffRules:
                 overnight=overnight,
                 weekday_overrides=overrides,
                 holiday_override=holiday,
+                first_hour_prorated=_bool(raw.get("first_hour_prorated", False)),
+                amount_step=_money(raw["amount_step"]) if raw.get("amount_step") is not None else None,
             )
         except (KeyError, TypeError, ValueError, AttributeError) as exc:  # AttributeError: "holiday": 5 и т. п.
             raise ValidationError(f"invalid tariff rules: {exc}") from None
@@ -151,12 +159,20 @@ class TariffRules:
             ),
             "weekday_overrides": {str(k): _override_json(v) for k, v in self.weekday_overrides.items()} or None,
             "holiday": _override_json(self.holiday_override) if self.holiday_override else None,
+            "first_hour_prorated": self.first_hour_prorated,
+            "amount_step": self.amount_step.minor if self.amount_step else None,
         }
 
 
 def _int(value: Any) -> int:
     if isinstance(value, bool) or not isinstance(value, int):
         raise ValueError(f"expected integer, got {type(value).__name__}")
+    return value
+
+
+def _bool(value: Any) -> bool:
+    if not isinstance(value, bool):
+        raise ValueError(f"expected boolean, got {type(value).__name__}")
     return value
 
 

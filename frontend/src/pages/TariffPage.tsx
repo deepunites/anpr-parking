@@ -18,6 +18,7 @@ import { ErrorBox } from "@/components/ErrorBox";
 
 const DAYS = [0, 1, 2, 3, 4, 5, 6] as const;
 const STEPS = ["1", "5", "10", "15", "30", "60"];
+const AMOUNT_STEPS = ["", "100", "500", "1000", "5000"]; // сум: без мелочи на сдачу
 
 /** Тариф площадки (настройка): что действует сейчас, новые цены с выбранного момента, пример расчёта, история. */
 export function TariffPage() {
@@ -83,8 +84,10 @@ function RulesSummary({ rules }: { rules: Rules }) {
   const grace = Number(rules["grace_minutes"] ?? 0);
   if (grace > 0) parts.push(fmt(t("tariffPage.sGrace"), { n: grace }));
   parts.push(fmt(t("tariffPage.sFirst"), { v: money(rules["first_hour_price"]) }));
+  if (rules["first_hour_prorated"] === true) parts.push(t("tariffPage.sProrated"));
   parts.push(fmt(t("tariffPage.sPer"), { v: money(rules["price_per_hour"]) }));
   parts.push(fmt(t("tariffPage.sRound"), { mode: t(`tariffPage.mode${String(rules["rounding_mode"] ?? "UP")}`), n: Number(rules["rounding_step_minutes"] ?? 1) }));
+  if (typeof rules["amount_step"] === "number") parts.push(fmt(t("tariffPage.sAmountStep"), { v: money(rules["amount_step"]) }));
   if (typeof rules["daily_max"] === "number") parts.push(fmt(t("tariffPage.sDaily"), { v: money(rules["daily_max"]) }));
   const night = rules["overnight"] as { start: string; end: string; price_per_hour: number } | null | undefined;
   if (night) parts.push(fmt(t("tariffPage.sNight"), { from: night.start, to: night.end, v: money(night.price_per_hour) }));
@@ -139,6 +142,7 @@ function TariffEditor({ lotId, planId, current, timeZone }: { lotId: string; pla
   );
   // шаг текущей версии вне списка (например, 20 из API) показываем как есть, а не «1»
   const steps = STEPS.includes(form.step) ? STEPS : [...STEPS, form.step].sort((a, b) => Number(a) - Number(b));
+  const amountSteps = AMOUNT_STEPS.includes(form.amountStep) ? AMOUNT_STEPS : [...AMOUNT_STEPS, form.amountStep];
 
   return (
     <form onSubmit={submit} className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
@@ -168,6 +172,20 @@ function TariffEditor({ lotId, planId, current, timeZone }: { lotId: string; pla
               options={(["UP", "NEAREST", "DOWN"] as const).map((m) => ({ value: m, label: t(`tariffPage.mode${m}`) }))}
             />
           </div>
+          <div>
+            <Label htmlFor="tf-amount-step">{t("tariffPage.amountStep")}</Label>
+            <Select id="tf-amount-step" value={form.amountStep} onChange={(e) => set("amountStep", e.target.value)} data-testid="tf-amount-step">
+              {amountSteps.map((s) => (
+                <option key={s} value={s}>
+                  {s === "" ? t("tariffPage.amountStepNone") : formatMinor(Number(s) * 100, i18n.language)}
+                </option>
+              ))}
+            </Select>
+          </div>
+          <label className="flex items-center gap-2 self-end pb-2 text-[14px] font-bold">
+            <input type="checkbox" checked={form.firstProrated} onChange={(e) => set("firstProrated", e.target.checked)} data-testid="tf-first-prorated" />
+            {t("tariffPage.firstProrated")}
+          </label>
         </div>
 
         <div className="mt-5 border-t border-line-2 pt-4">

@@ -6,6 +6,7 @@ from __future__ import annotations
 from dataclasses import replace
 from datetime import UTC, date, datetime, time, timedelta
 from fractions import Fraction
+from itertools import pairwise
 from uuid import uuid4
 from zoneinfo import ZoneInfo
 
@@ -271,6 +272,8 @@ def test_rules_json_contract_every_field() -> None:
             5: DayOverride(price_per_hour=Money(200000), first_hour_price=Money(300000), daily_max=Money(500000)),
         },
         holiday_override=DayOverride(free=True),
+        first_hour_prorated=True,
+        amount_step=Money(100000),
     )
     data = r.to_json()
     assert data == {
@@ -286,8 +289,12 @@ def test_rules_json_contract_every_field() -> None:
             "5": {"price_per_hour": 200000, "first_hour_price": 300000, "daily_max": 500000, "free": False},
         },
         "holiday": {"price_per_hour": None, "first_hour_price": None, "daily_max": None, "free": True},
+        "first_hour_prorated": True,
+        "amount_step": 100000,
     }
     assert TariffRules.from_json(data) == r
+    old = {k: v for k, v in data.items() if k not in ("first_hour_prorated", "amount_step")}
+    assert TariffRules.from_json(old) == replace(r, first_hour_prorated=False, amount_step=None), "старые версии"
     minimal = rules().to_json()
     assert minimal["daily_max"] is None and minimal["overnight"] is None
     assert minimal["weekday_overrides"] is None and minimal["holiday"] is None
@@ -322,3 +329,29 @@ def test_override_parsing_defaults() -> None:
     for bad in ("5", 5.0, True, None):
         with pytest.raises(ValueError, match="expected integer"):
             _int(bad)
+
+
+def test_per_minute_first_hour_rounded_to_thousand() -> None:
+    """MediaPark (2026-10-15): «на 16-й минуте считает целый час» — поминутно от часовой цены (5 000 первый час,
+    8 000 дальше), итог к ближайшей 1 000 сум: без мелочи на сдачу. 15 минут — бесплатно."""
+    r = rules(
+        first_hour_price=Money(500000),
+        price_per_hour=Money(800000),
+        rounding_step_minutes=1,
+        first_hour_prorated=True,
+        amount_step=Money(100000),
+    )
+    entry = at(2026, 10, 15, 10, 0)
+    sums = {
+        m: calc(entry, entry + timedelta(minutes=m), r).amount.minor // 100 for m in (15, 16, 18, 30, 60, 61, 90, 120)
+    }
+    assert sums == {15: 0, 16: 1000, 18: 2000, 30: 3000, 60: 5000, 61: 5000, 90: 9000, 120: 13000}
+    seq = [calc(entry, entry + timedelta(minutes=m), r).amount for m in range(16, 24 * 60)]
+    assert all(a <= b for a, b in pairwise(seq)), "монотонно по длительности (I-7)"
+    result = calc(entry, entry + timedelta(minutes=16), r)
+    assert [line.kind for line in result.breakdown] == ["FIRST_HOUR", "ROUNDING"]
+    assert result.breakdown[1].amount == Money(100000) - result.breakdown[0].amount
+    with pytest.raises(ValidationError):
+        TariffRules.from_json({**r.to_json(), "first_hour_prorated": "yes"})
+    with pytest.raises(ValidationError):
+        rules(amount_step=Money(0))

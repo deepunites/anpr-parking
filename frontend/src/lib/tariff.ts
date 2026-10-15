@@ -14,6 +14,8 @@ export interface TariffForm {
   perHour: string;
   step: string;
   mode: RoundingMode;
+  firstProrated: boolean; // первый час поминутно от цены, а не целым часом
+  amountStep: string; // итог к ближайшему кратному, сум; "" — без округления
   dailyMax: string;
   night: boolean;
   nightStart: string;
@@ -31,6 +33,8 @@ export const DEFAULT_FORM: TariffForm = {
   perHour: "3000",
   step: "15",
   mode: "UP",
+  firstProrated: false,
+  amountStep: "",
   dailyMax: "30000",
   night: false,
   nightStart: "22:00",
@@ -51,6 +55,8 @@ export function formFromRules(rules: Rules | null | undefined): TariffForm {
     perHour: sum(rules["price_per_hour"]),
     step: String(rules["rounding_step_minutes"] ?? DEFAULT_FORM.step),
     mode: (rules["rounding_mode"] as RoundingMode | undefined) ?? "UP",
+    firstProrated: rules["first_hour_prorated"] === true,
+    amountStep: sum(rules["amount_step"]),
     dailyMax: sum(rules["daily_max"]),
     night: Boolean(overnight),
     nightStart: overnight?.start ?? DEFAULT_FORM.nightStart,
@@ -84,6 +90,8 @@ export function rulesFromForm(form: TariffForm, base?: Rules | null): Rules | nu
   const firstHour = toMinor(form.firstHour);
   const perHour = toMinor(form.perHour);
   const dailyMax = toMinor(form.dailyMax);
+  const amountStep = toMinor(form.amountStep);
+  if (amountStep === undefined || amountStep === 0) return null;
   if (!Number.isInteger(grace) || grace < 0 || grace > 1440 || !Number.isInteger(step) || step < 1) return null;
   if (firstHour == null || perHour == null || dailyMax === undefined) return null;
   let overnight: Rules | null = null;
@@ -114,6 +122,8 @@ export function rulesFromForm(form: TariffForm, base?: Rules | null): Rules | nu
     price_per_hour: perHour,
     rounding_mode: form.mode,
     rounding_step_minutes: step,
+    first_hour_prorated: form.firstProrated,
+    amount_step: amountStep,
     daily_max: dailyMax,
     overnight,
     weekday_overrides: Object.keys(overrides).length > 0 ? overrides : null,

@@ -118,7 +118,7 @@ def round_minutes(raw_minutes: int, step: int, mode: RoundingMode) -> int:
     return max(n, 1) * step
 
 
-def calculate(  # noqa: PLR0915 — алгоритм намеренно линейный, читается сверху вниз
+def calculate(  # noqa: PLR0912, PLR0915 — алгоритм намеренно линейный, читается сверху вниз
     entry: datetime,
     exit: datetime,
     rules: TariffRules,
@@ -156,12 +156,15 @@ def calculate(  # noqa: PLR0915 — алгоритм намеренно лине
                 applied.append(acc.terms.source)
         return acc
 
-    # 1. первый час — блок с фиксированной ценой (по условиям дня въезда)
+    # 1. первый час — блок с фиксированной ценой или поминутно от неё (по условиям дня въезда)
     first_minutes = min(FIRST_HOUR_MINUTES, billing_minutes)
     first_end = entry + timedelta(minutes=first_minutes)
     entry_day = day_of(entry)
-    first_amount = zero if entry_day.terms.free else entry_day.terms.first_hour_price
-    entry_day.cost += Fraction(first_amount.minor)
+    first_cost = Fraction(0 if entry_day.terms.free else entry_day.terms.first_hour_price.minor)
+    if rules.first_hour_prorated:
+        first_cost = first_cost * first_minutes / FIRST_HOUR_MINUTES
+    first_amount = Money.from_fraction(first_cost, Rounding.HALF_UP)
+    entry_day.cost += first_cost
     entry_day.lines.append(
         BreakdownLine(
             "FREE_DAY" if entry_day.terms.free else "FIRST_HOUR",
@@ -226,7 +229,14 @@ def calculate(  # noqa: PLR0915 — алгоритм намеренно лине
                 applied.append("DAILY_MAX")
         gross += day_amount
 
-    # 4. скидка whitelist — от общей суммы, HALF_UP; net + discount == gross всегда
+    # 4. итог без мелочи: к ближайшему кратному amount_step (сдача у кассира — купюрами)
+    if rules.amount_step is not None:
+        rounded = round_amount(gross, rules.amount_step)
+        lines.append(BreakdownLine("ROUNDING", entry, exit, 0, rounded - gross, f"to {rules.amount_step.minor}"))
+        gross = rounded
+        applied.append("AMOUNT_ROUNDING")
+
+    # 5. скидка whitelist — от общей суммы, HALF_UP; net + discount == gross всегда
     discount = zero
     if access.kind is AccessKind.WHITELIST and access.discount_percent:
         discount = gross.percent(access.discount_percent, Rounding.HALF_UP)
@@ -234,6 +244,11 @@ def calculate(  # noqa: PLR0915 — алгоритм намеренно лине
         applied.append(f"WHITELIST_DISCOUNT_{access.discount_percent}")
     net = gross - discount
     return TariffCalculation(net, billing_minutes, tuple(applied), tuple(lines), gross, discount, mode, step)
+
+
+def round_amount(amount: Money, step: Money) -> Money:
+    """К ближайшему кратному step (половина — вверх): 1 333 → 1 000, 2 500 → 3 000 сум."""
+    return Money(math.floor(Fraction(amount.minor, step.minor) + Fraction(1, 2)) * step.minor, amount.currency)
 
 
 def _next_boundary(local: datetime, rules: TariffRules, tz: ZoneInfo) -> datetime:
