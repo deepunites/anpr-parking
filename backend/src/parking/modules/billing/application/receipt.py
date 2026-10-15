@@ -20,7 +20,15 @@ from parking.shared.errors import ServiceUnavailableError, ValidationError
 from parking.shared.money import Currency, Money
 
 WIDTH = 48  # символов в строке 80-мм ленты шрифтом A
-METHOD = {"CASH": "наличные", "SUBSCRIPTION": "абонемент", "CARD": "карта"}
+METHOD = {
+    "CASH": "наличные",
+    "CARD": "карта",
+    "ONLINE": "онлайн",
+    "SUBSCRIPTION": "абонемент",
+    "VIP": "VIP",
+    "WHITELIST": "белый список",
+    "GRACE": "бесплатное время",
+}
 
 
 @dataclass(frozen=True, slots=True)

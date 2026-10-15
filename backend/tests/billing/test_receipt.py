@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
@@ -43,6 +44,8 @@ def test_receipt_layout_fits_80mm_and_reads_like_a_receipt() -> None:
     payload = render(lines)
     assert payload.startswith(b"\x1b@\x1bt\x11") and payload.endswith(b"\x1dVB\x00")  # PC866, отрезка
     assert "Чек оплаты парковки".encode("cp866") in payload
+    free = receipt_lines(dataclasses.replace(data, amount=Money(0), method="GRACE"))
+    assert any("бесплатное время" in line.text for line in free)
 
 
 async def test_paid_payment_is_printed_on_network_printer(
