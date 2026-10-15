@@ -60,3 +60,9 @@ compose() {
   fi
   docker compose -p anpr-parking --env-file "$ENV_FILE" "${files[@]}" "$@"
 }
+
+# nginx (сервис web) находит api по имени один раз при старте: пересозданный api получает новый адрес, и до
+# перезапуска web панель отвечает 502 («Веб не ответил»). После любого обновления api — перезапуск web.
+restart_web() {
+  compose restart web >/dev/null
+}

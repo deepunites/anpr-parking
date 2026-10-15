@@ -45,6 +45,7 @@ case "${1:-on}" in
       compose rm -sf video
       rm -f "$VIDEO_STREAMS"
       compose up -d api  # без тома с записью
+      restart_web
     fi
     echo "Запись камер выключена, файлы остались в $VIDEO_DIR."
     exit 0
@@ -83,6 +84,7 @@ echo "Сборка и запуск записи..."
 compose build video
 compose up -d --force-recreate video
 compose up -d api  # том с записью и часовой пояс — для роликов в карточке сессии
+restart_web
 echo "Ждём первые секунды записи..."
 sleep 30
 status

@@ -21,6 +21,7 @@ compose up -d --remove-orphans || {
   compose logs --tail=80 init
   fail "Запуск не удался — пришлите этот журнал."
 }
+restart_web
 
 echo "Ожидание готовности http://127.0.0.1:$PARKING_HTTP_PORT ..."
 for _ in $(seq 1 90); do
