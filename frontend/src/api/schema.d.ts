@@ -1447,6 +1447,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/sessions/{session_id}/match": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Match Exit
+         * @description «Это она»: выезд без въезда — машина target; у неё начинается обычный выезд (тариф, оплата, стрела).
+         */
+        post: operations["match_exit_api_v1_sessions__session_id__match_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/sessions/{session_id}/open-exit": {
         parameters: {
             query?: never;
@@ -1531,6 +1551,26 @@ export interface paths {
         };
         /** Get Saga */
         get: operations["get_saga_api_v1_sessions__session_id__saga_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/sessions/{session_id}/similar": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Similar Sessions
+         * @description «Выезд без въезда» (камера выезда прочитала номер с ошибкой): машины на площадке с похожим номером.
+         */
+        get: operations["similar_sessions_api_v1_sessions__session_id__similar_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -3223,6 +3263,20 @@ export interface components {
             /** Zones */
             zones: components["schemas"]["ZoneLoadOut"][];
         };
+        /** MatchRequest */
+        MatchRequest: {
+            /**
+             * Reason
+             * @description Обязательное обоснование ручного действия (I-15)
+             */
+            reason: string;
+            /**
+             * Target Session Id
+             * Format: uuid
+             * @description машина на площадке, которая на самом деле выезжает
+             */
+            target_session_id: string;
+        };
         /** MeResponse */
         MeResponse: {
             /** Blocked Reason */
@@ -4340,6 +4394,15 @@ export interface components {
              * Format: date
              */
             week: string;
+        };
+        /** SimilarOut */
+        SimilarOut: {
+            /**
+             * Distance
+             * @description взвешенная правка номера: 0 — совпадает; путаница OCR (O/0, B/8) — 0.5
+             */
+            distance: number;
+            session: components["schemas"]["SessionOut"];
         };
         /** SubscriptionOut */
         SubscriptionOut: {
@@ -7668,6 +7731,41 @@ export interface operations {
             };
         };
     };
+    match_exit_api_v1_sessions__session_id__match_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MatchRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SagaOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     open_exit_api_v1_sessions__session_id__open_exit_post: {
         parameters: {
             query?: never;
@@ -7853,6 +7951,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SagaOut"] | null;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    similar_sessions_api_v1_sessions__session_id__similar_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SimilarOut"][];
                 };
             };
             /** @description Validation Error */

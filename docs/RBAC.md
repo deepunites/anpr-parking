@@ -111,6 +111,7 @@ API-ключ внешней системы получает только пра�
 | POST | `/api/v1/lots/{lot_id}/sessions/close-stale` | `sessions:write` |
 | GET | `/api/v1/lots/{lot_id}/tariff-plans` | `tariff:read` |
 | POST | `/api/v1/lots/{lot_id}/tariff-plans` | `tariff:write` |
+| GET | `/api/v1/media/images/{token}` | публичный |
 | POST | `/api/v1/payments/webhook/{provider}` | публичный |
 | GET | `/api/v1/payments/{payment_id}` | `payment:read` |
 | POST | `/api/v1/payments/{payment_id}/checkout` | `payment:read` |
@@ -138,12 +139,14 @@ API-ключ внешней системы получает только пра�
 | POST | `/api/v1/sessions/{session_id}/confirm-entry` | `sessions:write`, `barrier:open` |
 | POST | `/api/v1/sessions/{session_id}/correct-plate` | `sessions:write` |
 | GET | `/api/v1/sessions/{session_id}/images` | `sessions:read` |
+| POST | `/api/v1/sessions/{session_id}/match` | `sessions:write`, `barrier:open` |
 | POST | `/api/v1/sessions/{session_id}/open-exit` | `barrier:open` |
 | POST | `/api/v1/sessions/{session_id}/orphan` | `sessions:write` |
 | GET | `/api/v1/sessions/{session_id}/payments` | `payment:read` |
 | POST | `/api/v1/sessions/{session_id}/payments` | `payment:create_cash` |
 | GET | `/api/v1/sessions/{session_id}/quote` | `payment:read` |
 | GET | `/api/v1/sessions/{session_id}/saga` | `sessions:read` |
+| GET | `/api/v1/sessions/{session_id}/similar` | `sessions:read` |
 | POST | `/api/v1/sessions/{session_id}/vehicle` | `sessions:write` |
 | GET | `/api/v1/sessions/{session_id}/videos` | `sessions:read` |
 | GET | `/api/v1/shifts` | `shift:manage` |

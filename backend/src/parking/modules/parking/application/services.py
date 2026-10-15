@@ -28,6 +28,7 @@ from parking.modules.parking.application.contracts import (
     ManualEntryCommand,
     SagaView,
     SessionView,
+    SimilarSession,
     StaleSessionsResult,
     VehicleAttributesView,
     VehicleView,
@@ -52,6 +53,7 @@ from parking.modules.parking.domain.session import (
     SessionOrphaned,
     SessionStatus,
 )
+from parking.modules.parking.domain.similar import SIMILAR_MAX, plate_distance
 from parking.modules.tariff.application.contracts import AccessKind as TariffAccessKind
 from parking.modules.tariff.application.contracts import AccessTerms, TariffCalculator
 from parking.modules.tenancy.application.contracts import LotDirectory, LotInfo, UnknownExitPolicy
@@ -95,6 +97,8 @@ EXIT_WAIT = timedelta(minutes=30)  # пока идёт выезд — оплат
 STALE_BATCH = 2000  # за один раз; больше — повторить (останутся самые новые из старых)
 # closed_reason сессии — код (varchar(40), как REENTRY / MAX_SESSION_HOURS); причину сотрудника хранит аудит (I-15)
 CLOSED_MANUAL, ORPHANED_MANUAL, STALE_MANUAL = "CLOSED_MANUAL", "ORPHANED_MANUAL", "STALE_MANUAL"
+EXIT_MATCHED = "EXIT_MATCHED"  # «выезд без въезда» оказался машиной на площадке — номер прочитан с ошибкой
+SIMILAR_LIMIT, SIMILAR_SCAN = 5, 3000  # кандидатов кассиру; машин на площадке, среди которых ищем
 
 
 def _key(*parts: object) -> bytes:
@@ -260,6 +264,18 @@ class ParkingService:
         session = await repos.sessions.open_for_plate(cmd.lot_id, hashes, for_update=True)
         if session is None:
             return await self._exit_without_session(uow, repos, lot, cmd)
+        return await self._exit_session(uow, repos, session, cmd)
+
+    async def _exit_session(
+        self,
+        uow: UnitOfWork,
+        repos: ParkingRepositories,
+        session: ParkingSession,
+        cmd: ExitCommand,
+        *,
+        manual: bool = False,
+    ) -> ExitResult:
+        """Выезд найденной сессии: сага с тарифом. manual — кассир («Открыть выезд», «Это она»), не камера."""
         active_saga = await repos.sagas.active_for_session(session.id, for_update=True)
         if active_saga is not None:  # A-09: второй EXIT присоединяется к живой саге
             active_saga.attach_event(cmd.event_id)
@@ -271,6 +287,9 @@ class ParkingService:
                 amount_minor=active_saga.amount_due,
                 saga_state=active_saga.state,
             )
+        if not manual and session.review_reason is ReviewReason.EXIT_UNKNOWN_SESSION:
+            # камера снова прочитала тот же ошибочный номер: «выезд без въезда» ждёт кассира, а не уезжает бесплатно
+            return ExitResult(status=ExitStatus.EXIT_WITHOUT_SESSION, session_id=session.id)
         if cmd.requires_review:
             session.move_to_review(ReviewReason.EXIT_LOW_CONFIDENCE)
             await repos.sessions.save(session)
@@ -295,6 +314,8 @@ class ParkingService:
                 },
             )
             flags["prepaid"] = True
+        elif cmd.event_time <= session.entry_time:  # «выезд без въезда»: машину видели только на выезде — 0 минут
+            amount, calculation = 0, {"amount": 0, "applied_rules": ["NO_STAY"], "billing_minutes": 0}
         else:
             calc = await repos.tariff.calculate(cmd.lot_id, session.entry_time, cmd.event_time, _terms(cmd.decision))
             amount, calculation = calc.amount.minor, calc.to_snapshot()
@@ -354,6 +375,9 @@ class ParkingService:
             entry_time=cmd.event_time,
             entry_unknown=True,
             entry_access_kind=cmd.decision.kind.value,
+            # камера, увидевшая машину на выезде: её стрела и её видео для разбора кассиром
+            entry_camera_id=cmd.camera_id,
+            entry_event_id=cmd.event_id,
         )
         if (
             lot.policies.unknown_exit_policy is UnknownExitPolicy.OPEN_FREE
@@ -817,13 +841,23 @@ class ParkingService:
             return SessionView.of(session)
 
     async def manual_open_exit(self, actor: CurrentUser, session_id: UUID, *, reason: str) -> SagaView:
-        """Оператор открывает шлагбаум для сессии в MANUAL_REVIEW стадии выезда (ADR-12): платёж не трогаем."""
+        """«Открыть выезд».
+
+        Выезд застрял на разборе (стрела не поднялась, оплата не подтверждена) — стрела открывается, платёж не трогаем
+        (ADR-12). Выезд не начат — камера выезда не прочитала номер или прочитала с ошибкой («выезд без въезда»,
+        MediaPark 2026-10-15: кнопка отвечала ошибкой) — начинается обычный выезд по тарифу: к оплате — кассир
+        принимает деньги, и стрела откроется сама; бесплатно — открывается сразу. «Выезд без въезда» считается с
+        момента, когда камера увидела машину (0 минут)."""
         async with self._uow_factory(actor.tenant_id) as uow:
             repos = self._repos(uow)
             session = await self._load_scoped(repos, actor, session_id, for_update=True)
             saga = await repos.sagas.active_for_session(session.id, for_update=True)
-            if saga is None or saga.state is not SagaState.MANUAL_REVIEW:
-                raise ConflictError("session has no exit saga awaiting manual action")
+            if saga is None:
+                return await self._manual_exit(uow, repos, actor, session, reason)
+            if saga.state is not SagaState.MANUAL_REVIEW:
+                raise ConflictError(
+                    "exit is in progress: take the payment, the barrier opens itself", code="EXIT_IN_PROGRESS"
+                )
             command = await repos.barriers.request_open(
                 lot_id=session.lot_id,
                 camera_id=saga.exit_camera_id,
@@ -841,6 +875,114 @@ class ParkingService:
             await repos.sagas.save(saga)
             await self._audit(repos, actor, "EXIT_OPENED_MANUAL", session, reason)
             return SagaView.of(saga)
+
+    async def _manual_exit(
+        self, uow: UnitOfWork, repos: ParkingRepositories, actor: CurrentUser, session: ParkingSession, reason: str
+    ) -> SagaView:
+        unknown = session.review_reason is ReviewReason.EXIT_UNKNOWN_SESSION
+        if session.status is not SessionStatus.ACTIVE and not unknown:
+            raise ConflictError("session has no exit awaiting manual action")
+        plate = await self._plate(repos, actor.tenant_id, session.vehicle_id)
+        at = session.entry_time if unknown else self._clock.now()
+        cmd = ExitCommand(
+            tenant_id=actor.tenant_id,
+            lot_id=session.lot_id,
+            plate=plate,
+            event_time=at,
+            event_id=session.entry_event_id if unknown and session.entry_event_id else uuid4(),
+            decision=await self._decide(actor.tenant_id, session.lot_id, plate, at),
+            camera_id=session.entry_camera_id if unknown else None,
+        )
+        result = await self._exit_session(uow, repos, session, cmd, manual=True)
+        saga = await repos.sagas.active_for_session(session.id, for_update=False)
+        if saga is None or result.saga_id != saga.id:
+            raise ConflictError("exit was not started: the session needs review", code="EXIT_NOT_STARTED")
+        await self._audit(repos, actor, "EXIT_STARTED_MANUAL", session, reason, {"saga_id": str(saga.id)})
+        return SagaView.of(saga)
+
+    async def similar_sessions(
+        self, actor: CurrentUser, session_id: UUID, *, limit: int = SIMILAR_LIMIT
+    ) -> list[SimilarSession]:
+        """Машины на площадке с номером, похожим на номер сессии («выезд без въезда»: камера выезда ошиблась) —
+        лучшие первыми, при равенстве — въехавшие позже."""
+        async with self._uow_factory(actor.tenant_id) as uow:
+            repos = self._repos(uow)
+            session = await self._load_scoped(repos, actor, session_id)
+            plate = await self._plate(repos, actor.tenant_id, session.vehicle_id)
+            active = await repos.sessions.list_by_lot(
+                session.lot_id, statuses=(SessionStatus.ACTIVE,), limit=SIMILAR_SCAN, after=None
+            )
+            others = [s for s in active if s.id != session.id and s.vehicle_id != session.vehicle_id]
+            cards = await repos.vehicles.cards(list({s.vehicle_id for s in others}))
+            found: list[tuple[float, ParkingSession, PlateNumber, VehicleAttributes]] = []
+            for other in others:
+                card = cards.get(other.vehicle_id)
+                if card is None:
+                    continue
+                try:
+                    number = self._crypto.decrypt(actor.tenant_id, card.plate_encrypted, card.enc_key_version)
+                except Exception as exc:  # ключ номера недоступен — кандидат пропускается, разбор не падает
+                    log.warning("similar_plate_skipped", session_id=str(other.id), error_type=type(exc).__name__)
+                    continue
+                distance = plate_distance(plate.value, number.value)
+                if distance <= SIMILAR_MAX:
+                    found.append((distance, other, number, card.attributes))
+            found.sort(key=lambda f: (f[0], -f[1].entry_time.timestamp()))
+            full = await self._full_plates(repos, actor, session.lot_id)
+            return [
+                SimilarSession(session=SessionView.of(s, n.value if full else n.masked, _attrs_view(attrs)), distance=d)
+                for d, s, n, attrs in found[:limit]
+            ]
+
+    async def match_exit(self, actor: CurrentUser, session_id: UUID, target_id: UUID, *, reason: str) -> SagaView:
+        """«Это она»: «выезд без въезда» — на самом деле машина target, которая стоит на площадке (номер на выезде
+        прочитан с ошибкой). Разбор отменяется (CANCELLED, EXIT_MATCHED), у target начинается обычный выезд с момента,
+        когда камера увидела машину: тариф, оплата у кассира, стрела — как если бы номер прочитан верно."""
+        async with self._uow_factory(actor.tenant_id) as uow:
+            repos = self._repos(uow)
+            review = await self._load_scoped(repos, actor, session_id, for_update=True)
+            if review.status is not SessionStatus.MANUAL_REVIEW or (
+                review.review_reason is not ReviewReason.EXIT_UNKNOWN_SESSION
+            ):
+                raise ConflictError("session is not an exit without entry", code="NOT_UNKNOWN_EXIT")
+            target = await self._load_scoped(repos, actor, target_id, for_update=True)
+            if target.lot_id != review.lot_id or target.status is not SessionStatus.ACTIVE:
+                raise ConflictError("the matched car is not parked on this lot", code="MATCH_NOT_ACTIVE")
+            plate = await self._plate(repos, actor.tenant_id, target.vehicle_id)
+            cmd = ExitCommand(
+                tenant_id=actor.tenant_id,
+                lot_id=target.lot_id,
+                plate=plate,
+                event_time=max(review.entry_time, target.entry_time),
+                event_id=review.entry_event_id or uuid4(),
+                decision=await self._decide(actor.tenant_id, target.lot_id, plate, review.entry_time),
+                camera_id=review.entry_camera_id,
+            )
+            occupied = review.occupies_space
+            review.cancel(EXIT_MATCHED)
+            await repos.sessions.save(review)
+            await self._audit(
+                repos, actor, "EXIT_MATCHED_MANUAL", review, reason, {"matched_session_id": str(target.id)}
+            )
+            if occupied:
+                uow.after_commit(self._decrement(review.lot_id))
+            result = await self._exit_session(uow, repos, target, cmd, manual=True)
+            saga = await repos.sagas.active_for_session(target.id, for_update=False)
+            if saga is None or result.saga_id != saga.id:
+                raise ConflictError("exit was not started for the matched car", code="EXIT_NOT_STARTED")
+            await self._audit(repos, actor, "EXIT_STARTED_MANUAL", target, reason, {"saga_id": str(saga.id)})
+            return SagaView.of(saga)
+
+    async def _plate(self, repos: ParkingRepositories, tenant_id: UUID, vehicle_id: UUID) -> PlateNumber:
+        stored = await repos.vehicles.plate_encrypted(vehicle_id)
+        if stored is None:
+            raise NotFoundError("vehicle not found")
+        return self._crypto.decrypt(tenant_id, stored[0], stored[1])
+
+    async def _decide(self, tenant_id: UUID, lot_id: UUID, plate: PlateNumber, at: datetime) -> AccessDecision:
+        if self._access is None:
+            return AccessDecision.normal()
+        return await self._access.resolve(tenant_id, lot_id, self._crypto.hash(tenant_id, plate), at)
 
     async def close_manual(self, actor: CurrentUser, session_id: UUID, *, reason: str) -> SessionView:
         """Стрелу подняли ключом / машина уехала: закрываем сессию вручную, живая сага завершается как BYPASSED."""
@@ -1273,7 +1415,12 @@ class ParkingService:
 
     @staticmethod
     async def _audit(
-        repos: ParkingRepositories, actor: CurrentUser, action: str, session: ParkingSession, reason: str
+        repos: ParkingRepositories,
+        actor: CurrentUser,
+        action: str,
+        session: ParkingSession,
+        reason: str,
+        payload: dict[str, Any] | None = None,
     ) -> None:
         await repos.audit.record(
             AuditEntry(
@@ -1287,7 +1434,7 @@ class ParkingService:
                 actor_id=actor.user_id,
                 user_id=actor.user_id,
                 reason=reason,
-                payload={"status": session.status.value},
+                payload={"status": session.status.value, **(payload or {})},
             )
         )
 

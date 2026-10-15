@@ -5,7 +5,7 @@ import { isTopLayer, popLayer, pushLayer } from "./layers";
  * Доступный диалог без сторонних библиотек и инлайн-стилей (CSP style-src 'self'): role=dialog, aria-modal,
  * фокус внутрь при открытии, Escape закрывает, фокус возвращается инициатору.
  */
-export function Dialog({ open, onClose, title, children, initialFocus }: { open: boolean; onClose: () => void; title: string; children: ReactNode; initialFocus?: React.RefObject<HTMLElement | null> }) {
+export function Dialog({ open, onClose, title, children, initialFocus, wide = false, testId }: { open: boolean; onClose: () => void; title: string; children: ReactNode; initialFocus?: React.RefObject<HTMLElement | null>; wide?: boolean; testId?: string }) {
   const panel = useRef<HTMLDivElement>(null);
   const opener = useRef<Element | null>(null);
   // onClose — в ref: эффект не перезапускается от перерисовок родителя (иначе фокус прыгал бы и текст терялся)
@@ -53,8 +53,9 @@ export function Dialog({ open, onClose, title, children, initialFocus }: { open:
         role="dialog"
         aria-modal="true"
         aria-labelledby="dialog-title"
-        className="w-full max-w-lg rounded-[18px] border border-line bg-surface p-6 shadow-pop"
+        className={wide ? "max-h-[94vh] w-full max-w-5xl overflow-y-auto rounded-[18px] border border-line bg-surface p-4 shadow-pop" : "w-full max-w-lg rounded-[18px] border border-line bg-surface p-6 shadow-pop"}
         onClick={(e) => e.stopPropagation()}
+        data-testid={testId}
       >
         <h2 id="dialog-title" className="mb-4 text-xl font-extrabold">
           {title}

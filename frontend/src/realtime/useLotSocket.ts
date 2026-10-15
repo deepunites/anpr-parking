@@ -11,8 +11,13 @@ export interface FeedItem extends WsEvent {
 
 const FEED_LIMIT = 200;
 
-/** Лента событий площадки + статус соединения; при (пере)подключении и GAP инвалидируются серверные запросы. */
-export function useLotSocket(lotId: string | null) {
+/** Лента событий площадки + статус соединения; при (пере)подключении и GAP инвалидируются серверные запросы.
+    onEvent — каждое событие отдельно (лента пакетирует обновления React — два события подряд не потеряются). */
+export function useLotSocket(lotId: string | null, onEvent?: (event: WsEvent) => void) {
+  const listener = useRef(onEvent);
+  useEffect(() => {
+    listener.current = onEvent;
+  }, [onEvent]);
   const qc = useQueryClient();
   const [status, setStatus] = useState<SocketStatus>("closed");
   const [stale, setStale] = useState(true);
@@ -42,6 +47,7 @@ export function useLotSocket(lotId: string | null) {
       onResync: resync,
       onEvent: (event) => {
         const item: FeedItem = { ...event, receivedAt: Date.now() };
+        listener.current?.(event);
         if (event.type === "ALERT") setAlerts((prev) => [item, ...prev].slice(0, 50));
         if (["ENTRY", "EXIT", "PAYMENT", "BARRIER", "ALERT", "SESSION_CLOSED", "SESSION_UPDATED"].includes(event.type)) {
           setFeed((prev) => [item, ...prev].slice(0, FEED_LIMIT));

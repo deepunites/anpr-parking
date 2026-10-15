@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import inspect
 from typing import Any
+from uuid import uuid4
 
 import asyncpg
 import httpx
@@ -25,7 +26,7 @@ from tests.support.api_fixtures import Principal, bearer
 from tests.support.parking_fixtures import entry_cmd
 
 ADMIN = CurrentUser(user_id=USER_A_ADMIN, tenant_id=TENANT_A, role=Role.TENANT_ADMIN, lot_scope=frozenset())
-MANUAL_METHODS = ("correct_plate", "confirm_entry", "manual_open_exit", "close_manual", "mark_orphan")
+MANUAL_METHODS = ("correct_plate", "confirm_entry", "manual_open_exit", "close_manual", "mark_orphan", "match_exit")
 
 
 def test_every_manual_operation_requires_actor_and_reason() -> None:
@@ -50,7 +51,9 @@ def test_every_manual_operation_requires_actor_and_reason() -> None:
 async def test_manual_action_writes_audit_with_user_and_reason(
     container: Container, owner: asyncpg.Connection, clean_lot: None, method: str, action: str
 ) -> None:
-    entry = await container.parking.process_entry(entry_cmd(PlateNumber.parse("01R555RR"), requires_review=True))
+    # свой номер на каждый случай: тот же номер через секунды после выезда — эхо выезда, а не новый въезд
+    plate = PlateNumber.parse(f"01R{uuid4().int % 900 + 100}RR")
+    entry = await container.parking.process_entry(entry_cmd(plate, requires_review=True))
     assert entry.session_id is not None
     reason = f"invariant I-15 {method}"
     await getattr(container.parking, method)(ADMIN, entry.session_id, reason=reason)

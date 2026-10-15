@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, ArrowLeftFromLine, ArrowRightToLine, BadgeDollarSign, DoorOpen, PenLine, Search } from "lucide-react";
-import { useTranslation } from "@/i18n";
-import { useBarriers, useCameras, useLotSessions, useLots, useOccupancy, useReviewQueue, useSearch, type SessionOut } from "@/api/hooks";
+import { fmt, useTranslation } from "@/i18n";
+import { useBarriers, useCameras, useLotSessions, useLots, useOccupancy, useReviewQueue, useSearch, useSession, useSessionPayments, type SessionOut } from "@/api/hooks";
+import type { WsEvent } from "@/realtime/socket";
+import { Dialog } from "@/components/ui/dialog";
 import { useLotStore } from "@/lib/lot";
 import { useLotSocket, type FeedItem } from "@/realtime/useLotSocket";
 import { ConnectionIndicator } from "@/components/layout/AppShell";
@@ -110,15 +112,54 @@ function SessionRow({ s, selected, focused, onSelect, timeZone, now, highlight }
   );
 }
 
+/** Машина подъехала к выезду — окно поверх экрана: номер, фото, въезд, сумма и кнопки (MediaPark: кассир не ищет
+    номер). Уехала бесплатно — окно закрывается само; после оплаты остаётся, чтобы напечатать чек. */
+function ExitPopup({ sessionId, waiting, timeZone, onClose, onOpenSession }: { sessionId: string; waiting: number; timeZone?: string; onClose: () => void; onOpenSession: (id: string) => void }) {
+  const { t } = useTranslation();
+  const session = useSession(sessionId);
+  const payments = useSessionPayments(sessionId);
+  const status = session.data?.status;
+  const left = status === "CLOSED" || status === "CANCELLED" || status === "ORPHAN";
+  const paid = (payments.data ?? []).some((p) => p.status === "PAID");
+  useEffect(() => {
+    if (!left || paid) return;
+    const id = setTimeout(onClose, 8000);
+    return () => clearTimeout(id);
+  }, [left, paid, onClose]);
+  return (
+    <Dialog open onClose={onClose} title={waiting > 0 ? fmt(t("live.atExitMore"), { n: waiting }) : t("live.atExit")} wide testId="exit-popup">
+      <SessionPanel sessionId={sessionId} timeZone={timeZone} onClose={onClose} onOpenSession={onOpenSession} />
+    </Dialog>
+  );
+}
+
+/** Событие площадки — машина у выезда: камера выезда нашла въезд (сага выезда) или выезд ушёл на разбор. */
+function exitArrival(event: WsEvent): string | null {
+  const sid = typeof event.data?.["session_id"] === "string" ? event.data["session_id"] : null;
+  if (sid === null) return null;
+  if (event.type === "EXIT" && typeof event.data?.["saga_id"] === "string") return sid;
+  if (event.type === "ALERT" && event.data?.["kind"] === "MANUAL_REVIEW" && String(event.data?.["reason"] ?? "").startsWith("EXIT_")) return sid;
+  return null;
+}
+
 export function LivePage() {
   const { t } = useTranslation();
   const { lotId } = useLotStore();
   const lots = useLots();
   const lot = lots.data?.find((l) => l.id === lotId);
   const timeZone = lot?.timezone;
-  const { status, stale, feed, alerts } = useLotSocket(lotId);
-  const occ = useOccupancy(lotId);
   const me = useAuthStore((st) => st.me);
+  // окно выезда — тем, кто у стрелы: принимает наличные или открывает выезд
+  const atBarrier = hasPermission(me, "payment:create_cash") || hasPermission(me, "barrier:open");
+  const [exits, setExits] = useState<string[]>([]);
+  const onLotEvent = useCallback((event: WsEvent) => {
+    const sid = exitArrival(event);
+    if (sid !== null) setExits((q) => (q.includes(sid) ? q : [...q, sid]));
+  }, []);
+  const closeExit = useCallback(() => setExits((q) => q.slice(1)), []);
+  const switchExit = useCallback((id: string) => setExits((q) => [id, ...q.slice(1).filter((x) => x !== id)]), []);
+  const { status, stale, feed, alerts } = useLotSocket(lotId, atBarrier ? onLotEvent : undefined);
+  const occ = useOccupancy(lotId);
   // кассиру устройства не положены (403) — не запрашиваем и не показываем «0 / 0» с советом добавить камеры
   const seeCameras = hasPermission(me, "cameras:read");
   const seeBarriers = hasPermission(me, "barriers:read");
@@ -320,7 +361,7 @@ export function LivePage() {
         {wide ? (
           <div className="min-h-[28rem]">
             {selected ? (
-              <SessionPanel sessionId={selected} timeZone={timeZone} onClose={() => setSelected(null)} />
+              <SessionPanel sessionId={selected} timeZone={timeZone} onClose={() => setSelected(null)} onOpenSession={setSelected} hotkeys={exits.length === 0} />
             ) : (
               <Card className="flex h-full min-h-[28rem] items-center justify-center">
                 <EmptyState title={t("live.pickSession")} hint={t("live.pickHint")} testId="session-empty" />
@@ -330,7 +371,7 @@ export function LivePage() {
         ) : (
           selected && (
             <div ref={sheetRef} tabIndex={-1} className="fixed inset-0 z-40 overflow-y-auto bg-ground p-3 focus:outline-none" role="dialog" aria-modal="true" aria-label={t("live.pickSession")} data-testid="session-sheet">
-              <SessionPanel sessionId={selected} timeZone={timeZone} onClose={() => setSelected(null)} />
+              <SessionPanel sessionId={selected} timeZone={timeZone} onClose={() => setSelected(null)} onOpenSession={setSelected} hotkeys={exits.length === 0} />
             </div>
           )
         )}
@@ -381,6 +422,7 @@ export function LivePage() {
           </ul>
         </Card>
       </div>
+      {exits[0] && <ExitPopup key={exits[0]} sessionId={exits[0]} waiting={exits.length - 1} timeZone={timeZone} onClose={closeExit} onOpenSession={switchExit} />}
       <Drawer open={manual} onClose={() => setManual(false)} title={t("manual.title")} width="w-[500px]">
         {lotId && (
           <ManualEntryForm

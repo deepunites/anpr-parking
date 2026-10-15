@@ -51,6 +51,7 @@ export const ru = {
     emptyNoCameras: "Камеры не добавлены — добавьте их в разделе «Устройства».", keysQueue: "по очереди", keysOpen: "карточка", keysCash: "наличные",
     keysClose: "закрыть", pickSession: "Выберите машину", pickHint: "Нажмите на номер в очереди или найдите его по части номера.",
     attention: "Внимание", attentionEmpty: "Ничего не требует вмешательства.", open: "Открыть",
+    atExit: "Машина на выезде", atExitMore: "Машина на выезде · ещё ждут: {n}",
   },
   session: {
     title: "Сессия", plate: "Номер", status: "Статус", entry: "Въезд", exitTime: "Выезд", minutes: "Минут", photos: "Фото номера",
@@ -61,6 +62,9 @@ export const ru = {
     payments: "Платежи", confirmed: "Оплата принята", printReceipt: "Печать чека", receiptPrinted: "Чек напечатан", receiptFailed: "Чек не напечатан — проверьте принтер (оплата принята)", closed: "Закрыта", saga: "Выезд", noObligation: "Нет неоплаченного обязательства",
     reasonRequired: "Укажите причину (не менее 3 символов)", orig: "Исходное распознавание сохраняется (I-16)",
     sagaState: "Этап выезда", access: "Доступ", amountNow: "к оплате сейчас", recalc: "пересчёт каждую минуту", corrected: "Номер исправлен", opened: "Стрела открыта",
+    parked: "Стоит", stayed: "Стоял", similarTitle: "Въезд не найден — похожие номера на парковке", similarNone: "Похожих номеров на парковке нет. Найдите машину поиском или откройте выезд.",
+    itsThisCar: "Это она", matchTitle: "Выезжает эта машина?", matchText: "Номер на выезде прочитан с ошибкой — выезжает", matchConfirm: "Да, это она",
+    matchReason: "номер на выезде прочитан с ошибкой", payToOpen: "К оплате {v} — примите наличные, стрела откроется сама",
   },
   saga: { STARTED: "начата", QUOTED: "расчёт", PAYMENT_PENDING: "ждёт оплату", PAYMENT_PENDING_VERIFICATION: "проверка оплаты", PAID: "оплачено",
     BARRIER_OPENING: "открываем стрелу", COMPLETED: "завершена", MANUAL_REVIEW: "на разборе", BYPASSED: "закрыта вручную", FAILED: "ошибка" },
@@ -177,6 +181,8 @@ export const ru = {
     reasonPh: "например, «праздничные цены»", publish: "Сохранить новые цены", published: "Новые цены сохранены", history: "История цен",
     sGrace: "{n} мин бесплатно", sFirst: "первый час {v}", sPer: "далее {v} за час", sRound: "округление {mode} до {n} мин", sDaily: "не больше {v} в сутки",
     sNight: "ночью {from}–{to}: {v} за час", sDayFree: "{day}: бесплатно", sDayCustom: "{day}: {v} за час",
+    firstProrated: "Первый час — поминутно (16 минут — не целый час)", amountStep: "Округлять сумму до, сум", amountStepNone: "не округлять",
+    sProrated: "первый час поминутно", sAmountStep: "сумма — до {v}",
   },
   wizard: {
     map: "Схема", mapHint: "Зоны и места — для живой карты.", title: "Быстрый старт", hint: "Пять шагов — и парковка готова принимать машины.", lot: "Площадка", lotHint: "Где парковка и сколько на ней мест.",

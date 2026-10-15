@@ -153,6 +153,11 @@ SAMPLES: dict[tuple[str, str], dict[str, Any]] = {
         "path": {"session_id": "{session_id}"},
         "json": {"reason": "rbac contract test"},
     },
+    ("GET", "/api/v1/sessions/{session_id}/similar"): {"path": {"session_id": "{session_id}"}},
+    ("POST", "/api/v1/sessions/{session_id}/match"): {
+        "path": {"session_id": "{session_id}"},
+        "json": {"target_session_id": "{session_id}", "reason": "rbac contract test"},
+    },
     ("POST", "/api/v1/sessions/{session_id}/close"): {
         "path": {"session_id": "{session_id}"},
         "json": {"reason": "rbac contract test"},

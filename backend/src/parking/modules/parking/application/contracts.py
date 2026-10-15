@@ -204,6 +204,14 @@ class SessionView:
 
 
 @dataclass(frozen=True, slots=True)
+class SimilarSession:
+    """Машина на площадке с похожим номером — кандидат для «выезда без въезда» (distance — взвешенная правка)."""
+
+    session: SessionView
+    distance: float
+
+
+@dataclass(frozen=True, slots=True)
 class VehicleAttributesView:
     """v2: марка/модель/цвет машины — вводятся оператором, не распознаются камерой."""
 

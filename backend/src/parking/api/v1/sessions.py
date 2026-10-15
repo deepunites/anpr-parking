@@ -356,6 +356,46 @@ async def open_exit(
     return SagaOut.of(await container.parking.manual_open_exit(user, session_id, reason=body.reason))
 
 
+class SimilarOut(BaseModel):
+    session: SessionOut
+    distance: float = Field(description="взвешенная правка номера: 0 — совпадает; путаница OCR (O/0, B/8) — 0.5")
+
+
+class MatchRequest(BaseModel):
+    target_session_id: UUID = Field(description="машина на площадке, которая на самом деле выезжает")
+    reason: Reason
+
+
+@router.get(
+    "/sessions/{session_id}/similar",
+    response_model=list[SimilarOut],
+    openapi_extra=permission_extra(Permission.SESSIONS_READ),
+)
+async def similar_sessions(
+    session_id: UUID,
+    user: Annotated[CurrentUser, Depends(require(Permission.SESSIONS_READ))],
+    container: Annotated[Container, Depends(get_container)],
+) -> list[SimilarOut]:
+    """«Выезд без въезда» (камера выезда прочитала номер с ошибкой): машины на площадке с похожим номером."""
+    found = await container.parking.similar_sessions(user, session_id)
+    return [SimilarOut(session=SessionOut.of(f.session), distance=f.distance) for f in found]
+
+
+@router.post(
+    "/sessions/{session_id}/match",
+    response_model=SagaOut,
+    openapi_extra=permission_extra(Permission.SESSIONS_WRITE, Permission.BARRIER_OPEN),
+)
+async def match_exit(
+    session_id: UUID,
+    body: MatchRequest,
+    user: Annotated[CurrentUser, Depends(require(Permission.SESSIONS_WRITE, Permission.BARRIER_OPEN))],
+    container: Annotated[Container, Depends(get_container)],
+) -> SagaOut:
+    """«Это она»: выезд без въезда — машина target; у неё начинается обычный выезд (тариф, оплата, стрела)."""
+    return SagaOut.of(await container.parking.match_exit(user, session_id, body.target_session_id, reason=body.reason))
+
+
 @router.post(
     "/sessions/{session_id}/close", response_model=SessionOut, openapi_extra=permission_extra(Permission.SESSIONS_WRITE)
 )

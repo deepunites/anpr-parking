@@ -210,7 +210,38 @@ export function useOpenExit(sessionId: string) {
   return useMutation({
     mutationFn: async (body: { reason: string }) =>
       unwrap(await api.POST("/api/v1/sessions/{session_id}/open-exit", { params: { path: { session_id: sessionId } }, body })),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: keys.saga(sessionId) }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: keys.saga(sessionId) });
+      void qc.invalidateQueries({ queryKey: keys.payments(sessionId) });
+      void qc.invalidateQueries({ queryKey: keys.session(sessionId) });
+    },
+  });
+}
+
+/** «Выезд без въезда» (камера выезда ошиблась в номере): машины на площадке с похожим номером — лучшие первыми. */
+export function useSimilarSessions(sessionId: string, enabled: boolean) {
+  return useQuery({
+    queryKey: ["similar", sessionId] as const,
+    queryFn: async () => unwrap(await api.GET("/api/v1/sessions/{session_id}/similar", { params: { path: { session_id: sessionId } } })),
+    enabled,
+    staleTime: 15_000,
+  });
+}
+
+/** «Это она»: выезд без въезда — машина target; у неё начинается обычный выезд (сумма, оплата, стрела). */
+export function useMatchExit(sessionId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (body: { target_session_id: string; reason: string }) =>
+      unwrap(await api.POST("/api/v1/sessions/{session_id}/match", { params: { path: { session_id: sessionId } }, body })),
+    onSuccess: (saga) => {
+      void qc.invalidateQueries({ queryKey: keys.session(sessionId) });
+      void qc.invalidateQueries({ queryKey: keys.session(saga.session_id) });
+      void qc.invalidateQueries({ queryKey: keys.saga(saga.session_id) });
+      void qc.invalidateQueries({ queryKey: keys.payments(saga.session_id) });
+      void qc.invalidateQueries({ queryKey: ["sessions"] });
+      void qc.invalidateQueries({ queryKey: keys.review });
+    },
   });
 }
 

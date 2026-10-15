@@ -42,6 +42,10 @@ class VehicleRepository(Protocol):
         """Шифртекст номера + марка/модель/цвет одним запросом (карточка сессии, списки)."""
         ...
 
+    async def cards(self, vehicle_ids: list[UUID]) -> dict[UUID, VehicleCard]:
+        """То же для многих машин одним запросом (похожие номера среди машин на площадке)."""
+        ...
+
     async def set_attributes(
         self, vehicle_id: UUID, *, make: str | None, model: str | None, color: str | None, at: datetime
     ) -> None: ...

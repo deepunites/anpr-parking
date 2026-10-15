@@ -3491,6 +3491,29 @@
         "title": "MapOut",
         "type": "object"
       },
+      "MatchRequest": {
+        "properties": {
+          "reason": {
+            "description": "Обязательное обоснование ручного действия (I-15)",
+            "maxLength": 500,
+            "minLength": 3,
+            "title": "Reason",
+            "type": "string"
+          },
+          "target_session_id": {
+            "description": "машина на площадке, которая на самом деле выезжает",
+            "format": "uuid",
+            "title": "Target Session Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "target_session_id",
+          "reason"
+        ],
+        "title": "MatchRequest",
+        "type": "object"
+      },
       "MeResponse": {
         "properties": {
           "blocked_reason": {
@@ -6761,6 +6784,24 @@
           "count"
         ],
         "title": "SignupWeekOut",
+        "type": "object"
+      },
+      "SimilarOut": {
+        "properties": {
+          "distance": {
+            "description": "взвешенная правка номера: 0 — совпадает; путаница OCR (O/0, B/8) — 0.5",
+            "title": "Distance",
+            "type": "number"
+          },
+          "session": {
+            "$ref": "#/components/schemas/SessionOut"
+          }
+        },
+        "required": [
+          "session",
+          "distance"
+        ],
+        "title": "SimilarOut",
         "type": "object"
       },
       "SubscriptionOut": {
@@ -13059,6 +13100,69 @@
         ]
       }
     },
+    "/api/v1/sessions/{session_id}/match": {
+      "post": {
+        "description": "«Это она»: выезд без въезда — машина target; у неё начинается обычный выезд (тариф, оплата, стрела).",
+        "operationId": "match_exit_api_v1_sessions__session_id__match_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Session Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MatchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SagaOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Match Exit",
+        "tags": [
+          "sessions"
+        ],
+        "x-permission": [
+          "sessions:write",
+          "barrier:open"
+        ]
+      }
+    },
     "/api/v1/sessions/{session_id}/open-exit": {
       "post": {
         "operationId": "open_exit_api_v1_sessions__session_id__open_exit_post",
@@ -13399,6 +13503,62 @@
           }
         ],
         "summary": "Get Saga",
+        "tags": [
+          "sessions"
+        ],
+        "x-permission": [
+          "sessions:read"
+        ]
+      }
+    },
+    "/api/v1/sessions/{session_id}/similar": {
+      "get": {
+        "description": "«Выезд без въезда» (камера выезда прочитала номер с ошибкой): машины на площадке с похожим номером.",
+        "operationId": "similar_sessions_api_v1_sessions__session_id__similar_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Session Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SimilarOut"
+                  },
+                  "title": "Response Similar Sessions Api V1 Sessions  Session Id  Similar Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Similar Sessions",
         "tags": [
           "sessions"
         ],

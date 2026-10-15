@@ -94,6 +94,22 @@ class SqlVehicleRepository:
             attributes=VehicleAttributes(make=row.make, model=row.model, color=row.color),
         )
 
+    async def cards(self, vehicle_ids: list[UUID]) -> dict[UUID, VehicleCard]:
+        if not vehicle_ids:
+            return {}
+        rows = await self._s.execute(
+            text("SELECT id, plate_encrypted, enc_key_version, make, model, color FROM vehicle WHERE id = ANY(:ids)"),
+            {"ids": vehicle_ids},
+        )
+        return {
+            row.id: VehicleCard(
+                plate_encrypted=bytes(row.plate_encrypted),
+                enc_key_version=int(row.enc_key_version),
+                attributes=VehicleAttributes(make=row.make, model=row.model, color=row.color),
+            )
+            for row in rows
+        }
+
     async def set_attributes(
         self, vehicle_id: UUID, *, make: str | None, model: str | None, color: str | None, at: datetime
     ) -> None:

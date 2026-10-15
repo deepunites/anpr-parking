@@ -48,6 +48,7 @@ export const uz: Dict = {
     emptyNoCameras: "Kameralar qo‘shilmagan — «Qurilmalar» bo‘limida qo‘shing.", keysQueue: "navbat bo‘ylab", keysOpen: "karta", keysCash: "naqd",
     keysClose: "yopish", pickSession: "Mashinani tanlang", pickHint: "Navbatdagi raqamni bosing yoki raqam qismi bo‘yicha toping.",
     attention: "Diqqat", attentionEmpty: "Aralashuv talab qilinmaydi.", open: "Ochish",
+    atExit: "Mashina chiqishda", atExitMore: "Mashina chiqishda · yana kutmoqda: {n}",
   },
   session: {
     title: "Sessiya", plate: "Raqam", status: "Holat", entry: "Kirish", exitTime: "Chiqish", minutes: "Daqiqa", photos: "Raqam surati",
@@ -58,6 +59,9 @@ export const uz: Dict = {
     payments: "To‘lovlar", confirmed: "To‘lov qabul qilindi", printReceipt: "Chek chop etish", receiptPrinted: "Chek chop etildi", receiptFailed: "Chek chop etilmadi — printerni tekshiring (to‘lov qabul qilindi)", closed: "Yopilgan", saga: "Chiqish", noObligation: "To‘lanmagan majburiyat yo‘q",
     reasonRequired: "Sababni ko‘rsating (kamida 3 belgi)", orig: "Dastlabki tanib olish saqlanadi (I-16)",
     sagaState: "Chiqish bosqichi", access: "Kirish turi", amountNow: "hozir to‘lanadi", recalc: "har daqiqada qayta hisoblanadi", corrected: "Raqam tuzatildi", opened: "Shlagbaum ochildi",
+    parked: "Turibdi", stayed: "Turdi", similarTitle: "Kirish topilmadi — to‘xtash joyidagi o‘xshash raqamlar", similarNone: "O‘xshash raqamlar yo‘q. Mashinani qidiruv orqali toping yoki chiqishni oching.",
+    itsThisCar: "Shu mashina", matchTitle: "Shu mashina chiqyaptimi?", matchText: "Chiqishda raqam xato o‘qildi — chiqyapti", matchConfirm: "Ha, shu",
+    matchReason: "chiqishda raqam xato o‘qildi", payToOpen: "To‘lov {v} — naqd qabul qiling, shlagbaum o‘zi ochiladi",
   },
   saga: { STARTED: "boshlandi", QUOTED: "hisob", PAYMENT_PENDING: "to‘lov kutilmoqda", PAYMENT_PENDING_VERIFICATION: "to‘lov tekshiruvi", PAID: "to‘langan",
     BARRIER_OPENING: "shlagbaum ochilmoqda", COMPLETED: "yakunlandi", MANUAL_REVIEW: "ko‘rib chiqishda", BYPASSED: "qo‘lda yopildi", FAILED: "xato" },
@@ -171,6 +175,8 @@ export const uz: Dict = {
     reasonPh: "masalan, «bayram narxlari»", publish: "Yangi narxlarni saqlash", published: "Yangi narxlar saqlandi", history: "Narxlar tarixi",
     sGrace: "{n} daqiqa bepul", sFirst: "birinchi soat {v}", sPer: "keyin soatiga {v}", sRound: "{n} daqiqagacha {mode} yaxlitlash", sDaily: "sutkada ko‘pi bilan {v}",
     sNight: "tunda {from}–{to}: soatiga {v}", sDayFree: "{day}: bepul", sDayCustom: "{day}: soatiga {v}",
+    firstProrated: "Birinchi soat — daqiqalab (16 daqiqa — butun soat emas)", amountStep: "Summani yaxlitlash, so‘m", amountStepNone: "yaxlitlamaslik",
+    sProrated: "birinchi soat daqiqalab", sAmountStep: "summa — {v} gacha",
   },
   wizard: {
     map: "Sxema", mapHint: "Zonalar va joylar — jonli xarita uchun.", title: "Tez boshlash", hint: "Besh qadam — va parkovka mashinalarni qabul qilishga tayyor.", lot: "Maydon", lotHint: "Parkovka qayerda va nechta joy bor.",
