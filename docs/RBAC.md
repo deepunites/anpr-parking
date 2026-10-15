@@ -10,9 +10,9 @@ API-ключ внешней системы получает только пра�
 | Право | VIEWER | OPERATOR | CASHIER | MANAGER | TENANT_ADMIN | OWNER | DEVELOPER | PLATFORM_ADMIN | PLATFORM_OWNER |
 |---|---|---|---|---|---|---|---|---|---|
 | `sessions:read` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |  |
-| `sessions:write` |  | ✓ |  | ✓ | ✓ |  |  | ✓ |  |
-| `barrier:open` |  | ✓ |  | ✓ | ✓ |  |  | ✓ |  |
-| `barrier:close` |  | ✓ |  | ✓ | ✓ |  |  | ✓ |  |
+| `sessions:write` |  | ✓ | ✓ | ✓ | ✓ |  |  | ✓ |  |
+| `barrier:open` |  | ✓ | ✓ | ✓ | ✓ |  |  | ✓ |  |
+| `barrier:close` |  | ✓ | ✓ | ✓ | ✓ |  |  | ✓ |  |
 | `payment:read` |  | ✓ | ✓ | ✓ | ✓ | ✓ |  | ✓ |  |
 | `payment:create_cash` |  |  | ✓ | ✓ | ✓ |  |  | ✓ |  |
 | `payment:create_cash_custom` |  |  |  | ✓ | ✓ |  |  | ✓ |  |

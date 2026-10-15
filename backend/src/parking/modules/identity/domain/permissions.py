@@ -64,7 +64,18 @@ _OPERATOR = _VIEWER | frozenset(
         Permission.ACCESS_READ,
     }
 )
-_CASHIER = _VIEWER | frozenset({Permission.PAYMENT_READ, Permission.PAYMENT_CREATE_CASH, Permission.SHIFT_MANAGE})
+# Кассир на выезде — единственный человек у стрелы (MediaPark, 2026-10-15): кроме денег и смены он выпускает машину
+# «выезд без въезда», открывает стрелу и исправляет номер — всё с причиной и в аудите (I-15)
+_CASHIER = _VIEWER | frozenset(
+    {
+        Permission.PAYMENT_READ,
+        Permission.PAYMENT_CREATE_CASH,
+        Permission.SHIFT_MANAGE,
+        Permission.SESSIONS_WRITE,
+        Permission.BARRIER_OPEN,
+        Permission.BARRIER_CLOSE,
+    }
+)
 _MANAGER = (
     _OPERATOR
     | _CASHIER
