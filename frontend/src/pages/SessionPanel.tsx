@@ -58,7 +58,10 @@ function Photos({ sessionId }: { sessionId: string }) {
   return (
     <div className="grid gap-2">
       {images.data.slice(0, 2).map((img) => (
-        <img key={img.event_id} src={img.url} alt={`${t("session.photos")} ${formatTime(img.event_time, undefined, "ru")}`} className="aspect-[4/3] w-full rounded-xl border border-line object-cover" loading="lazy" />
+        // общий кадр машины 16:9 — целиком, без обрезки; по нажатию — в полном размере
+        <a key={img.event_id} href={img.url} target="_blank" rel="noreferrer">
+          <img src={img.url} alt={`${t("session.photos")} ${formatTime(img.event_time, undefined, "ru")}`} className="aspect-video w-full rounded-xl border border-line bg-[var(--surface-2)] object-contain" loading="lazy" />
+        </a>
       ))}
     </div>
   );

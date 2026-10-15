@@ -126,6 +126,27 @@ async def test_vendor_adapters_store_frame(minio: str, client: httpx.AsyncClient
     assert dh.json()["status"] == "ENTRY_CONFIRMED"
 
 
+async def test_hikvision_keeps_vehicle_picture_not_plate_crop(
+    minio: str, client: httpx.AsyncClient, entry_key: str, users: dict[Role, Principal]
+) -> None:
+    """Hikvision шлёт вырез номера (1–5 КБ) и общий кадр машины (сотни КБ, 4 Мп — больше 1 МБ): в карточке — общий."""
+    scene = b"\xff\xd8\xff\xe0" + b"\x01" * (1536 * 1024) + b"\xff\xd9"
+    files = {
+        "anpr.xml": ("anpr.xml", _hik_xml(unique_plate()).encode(), "application/xml"),
+        "licensePlatePicture.jpg": ("licensePlatePicture.jpg", JPEG, "image/jpeg"),
+        "detectionPicture.jpg": ("detectionPicture.jpg", scene, "image/jpeg"),
+    }
+    hik = await client.post("/api/v1/camera/vendor/hikvision", files=files, headers={"X-Camera-Key": entry_key})
+    assert hik.status_code == 200, hik.text
+    images = await client.get(
+        f"/api/v1/sessions/{hik.json()['session_id']}/images", headers=await bearer(client, users[Role.OPERATOR])
+    )
+    assert images.status_code == 200 and len(images.json()) == 1, images.text
+    async with httpx.AsyncClient(timeout=10) as s3:
+        view = await s3.get(images.json()[0]["url"])
+    assert view.status_code == 200 and view.content == scene
+
+
 async def test_image_served_through_api_when_storage_is_internal(
     minio: str,
     client: httpx.AsyncClient,

@@ -355,16 +355,17 @@ def _parse_xml(raw: bytes) -> dict[str, str]:
 _NO_PLATE = {"", "unknown", "nocarplate", "无车牌"}
 
 
-async def _hikvision_parts(request: Request) -> tuple[bytes, bytes | None, str | None]:
-    """XML события и кадр номера из любого варианта Hikvision: multipart с частью anpr.xml (или любой .xml/text/xml),
-    кадр licensePlatePicture.jpg (иначе первый jpg); без multipart — тело целиком XML (служебные события)."""
+async def _hikvision_parts(request: Request, max_picture: int) -> tuple[bytes, bytes | None, str | None]:
+    """XML события и кадр из любого варианта Hikvision: multipart с частью anpr.xml (или любой .xml/text/xml); без
+    multipart — тело целиком XML (служебные события). Кадр — самый крупный jpg: общий кадр машины (detectionPicture,
+    vehiclePicture), а вырез номера licensePlatePicture (1–5 КБ) — только если общего нет. На MediaPark (2026-10-15)
+    в карточке стоял один вырез номера: по нему не видно, какая это машина."""
     content_type = request.headers.get("content-type", "")
     if "multipart/form-data" not in content_type:
         return await request.body(), None, None
-    form = await request.form(max_files=8, max_fields=16, max_part_size=1024 * 1024)
+    form = await request.form(max_files=8, max_fields=16, max_part_size=max_picture)
     xml: bytes | None = None
-    plate_pic: bytes | None = None
-    any_pic: bytes | None = None
+    picture: bytes | None = None
     event_type: str | None = None
     for name, value in form.multi_items():
         if isinstance(value, str):
@@ -377,13 +378,13 @@ async def _hikvision_parts(request: Request) -> tuple[bytes, bytes | None, str |
         ctype = (value.content_type or "").lower()
         if xml is None and (filename.endswith(".xml") or "xml" in ctype):
             xml = await value.read()
-        elif "licenseplate" in filename and plate_pic is None:
-            plate_pic = await value.read()
-        elif any_pic is None and (filename.endswith((".jpg", ".jpeg")) or "jpeg" in ctype):
-            any_pic = await value.read()
+        elif filename.endswith((".jpg", ".jpeg")) or "jpeg" in ctype:
+            data = await value.read()
+            if picture is None or len(data) > len(picture):
+                picture = data
     if xml is None:
         raise ValidationError("Hikvision event without XML part")
-    return xml, plate_pic or any_pic, event_type
+    return xml, picture, event_type
 
 
 async def _hikvision(
@@ -391,7 +392,7 @@ async def _hikvision(
 ) -> CameraEventResponse:
     started = time.perf_counter()
     try:
-        raw_xml, picture, event_type = await _hikvision_parts(request)
+        raw_xml, picture, event_type = await _hikvision_parts(request, container.settings.media_max_bytes)
         values = _parse_xml(raw_xml)
         kind = values.get("eventType", "ANPR").upper()
         plate = (values.get("licensePlate") or values.get("plateNumber") or "").strip()
