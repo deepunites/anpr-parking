@@ -96,6 +96,13 @@ class SessionRepository(Protocol):
         в том числе «выезд без въезда» на разбор, созданный с exited_since."""
         ...
 
+    async def recent_entries(
+        self, lot_id: UUID, *, since: datetime, until: datetime
+    ) -> list[tuple[ParkingSession, bytes, int]]:
+        """Сессии площадки, въехавшие камерой в [since, until] и ещё стоящие, с шифртекстом номера — одним запросом
+        (эхо и двойное чтение на горячем пути въезда и выезда)."""
+        ...
+
     async def recent_visits(self, lot_id: UUID, vehicle_id: UUID, *, since: datetime, before: datetime) -> int:
         """Сколько раз машина побывала на площадке с въездом в [since, before): закрытые сессии, стоявшие дольше
         минуты (эхо въезда и ошибки камер не считаются)."""

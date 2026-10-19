@@ -53,7 +53,7 @@ from parking.modules.parking.domain.session import (
     SessionOrphaned,
     SessionStatus,
 )
-from parking.modules.parking.domain.similar import SIMILAR_MAX, plate_distance
+from parking.modules.parking.domain.similar import SIMILAR_MAX, is_complete, plate_distance, same_car_reads
 from parking.modules.tariff.application.contracts import AccessKind as TariffAccessKind
 from parking.modules.tariff.application.contracts import AccessTerms, TariffCalculator
 from parking.modules.tenancy.application.contracts import LotDirectory, LotInfo, UnknownExitPolicy
@@ -99,6 +99,8 @@ STALE_BATCH = 2000  # за один раз; больше — повторить 
 CLOSED_MANUAL, ORPHANED_MANUAL, STALE_MANUAL = "CLOSED_MANUAL", "ORPHANED_MANUAL", "STALE_MANUAL"
 EXIT_MATCHED = "EXIT_MATCHED"  # «выезд без въезда» оказался машиной на площадке — номер прочитан с ошибкой
 STALE_REVIEW = "STALE_REVIEW"  # забытый «выезд без въезда»: та же машина снова у выезда спустя долгое время
+DUPLICATE_READ = "DUPLICATE_READ"  # вторая сессия одной машины от двойного чтения — верный номер уже стоит
+DOUBLE_READ = timedelta(seconds=10)  # камера въезда читает одну машину повторно за секунды (70Z525CA, 90Z525CA)
 SIMILAR_LIMIT, SIMILAR_SCAN = 5, 3000  # кандидатов кассиру; машин на площадке, среди которых ищем
 REPEAT_WINDOW = timedelta(hours=24)  # въезды машины, после которых бесплатных минут уже нет (тариф: free_visits)
 
@@ -166,6 +168,9 @@ class ParkingService:
             # иначе «повторный въезд» закрыл бы выезжающую сессию вместе с оплатой и открыл стрелу без неё
             log.info("entry_exit_echo", session_id=str(exiting), camera_id=str(cmd.camera_id))
             return EntryResult(status=EntryStatus.ENTRY_EXIT_ECHO, session_id=exiting)
+        double = await self._double_read(uow, repos, cmd, vehicle.id)
+        if double is not None:
+            return double
 
         blacklisted = cmd.decision.kind is AccessKind.BLACKLIST
         status = SessionStatus.ACTIVE
@@ -269,6 +274,9 @@ class ParkingService:
         hashes = self._crypto.hashes_for_lookup(cmd.tenant_id, cmd.plate)
         session = await repos.sessions.open_for_plate(cmd.lot_id, hashes, for_update=True)
         if session is None:
+            echo = await self._similar_entry_echo(uow, repos, lot, cmd)
+            if echo is not None:
+                return echo
             return await self._exit_without_session(uow, repos, lot, cmd)
         since_entry = cmd.event_time - session.entry_time
         if (
@@ -292,6 +300,105 @@ class ParkingService:
             uow.after_commit(self._decrement(session.lot_id))
             return await self._exit_without_session(uow, repos, lot, cmd)
         return await self._exit_session(uow, repos, session, cmd)
+
+    async def _double_read(
+        self, uow: UnitOfWork, repos: ParkingRepositories, cmd: EntryCommand, vehicle_id: UUID
+    ) -> EntryResult | None:
+        """Камера въезда прочитала только что въехавшую машину ещё раз и иначе (регион не попал в кадр): вторая
+        сессия не создаётся, стрела второй раз не открывается; полный номер исправляет неполный."""
+        if cmd.late:  # из оффлайн-буфера: события задним числом идут пачкой — не дубликаты
+            return None
+        recent = await repos.sessions.recent_entries(
+            cmd.lot_id, since=cmd.event_time - DOUBLE_READ, until=cmd.event_time + DOUBLE_READ
+        )
+        match = self._closest(cmd.tenant_id, [r for r in recent if r[0].vehicle_id != vehicle_id], cmd.plate)
+        if match is None or not same_car_reads(cmd.plate.value, match[1].value):
+            return None
+        entered, entered_plate, _ = match
+        if is_complete(cmd.plate.value) and not is_complete(entered_plate.value):
+            await self._camera_correct(uow, repos, entered.id, cmd.plate, cmd.camera_id, cmd.event_id)
+        log.info("entry_double_read", session_id=str(entered.id), camera_id=str(cmd.camera_id))
+        return EntryResult(status=EntryStatus.ENTRY_DOUBLE_READ, session_id=entered.id)
+
+    async def _similar_entry_echo(
+        self, uow: UnitOfWork, repos: ParkingRepositories, lot: LotInfo, cmd: ExitCommand
+    ) -> ExitResult | None:
+        """Эхо въезда с другим чтением номера: камера выезда видит въезжающую машину сзади, и регион у неё в кадре
+        (камера въезда его обрезает: «Q475UAUA» вместо 90Q475UA). Похожий номер, въехавший меньше минуты назад, — та
+        же машина: не выезд, а полное чтение исправляет номер въезда (MediaPark: «вторая камера дописывает»)."""
+        window = timedelta(seconds=lot.policies.exit_min_stay_seconds)
+        if not window:
+            return None
+        recent = await repos.sessions.recent_entries(cmd.lot_id, since=cmd.event_time - window, until=cmd.event_time)
+        match = self._closest(cmd.tenant_id, recent, cmd.plate)
+        if match is None or match[2] > SIMILAR_MAX:
+            return None
+        entered, entered_plate, _ = match
+        if is_complete(cmd.plate.value) and cmd.plate.value != entered_plate.value:
+            await self._camera_correct(uow, repos, entered.id, cmd.plate, cmd.camera_id, cmd.event_id)
+        log.info("exit_entry_echo_similar", session_id=str(entered.id), camera_id=str(cmd.camera_id))
+        return ExitResult(status=ExitStatus.EXIT_ENTRY_ECHO, session_id=entered.id)
+
+    def _closest(
+        self, tenant_id: UUID, sessions: list[tuple[ParkingSession, bytes, int]], plate: PlateNumber
+    ) -> tuple[ParkingSession, PlateNumber, float] | None:
+        best: tuple[ParkingSession, PlateNumber, float] | None = None
+        for candidate, encrypted, version in sessions:
+            try:
+                number = self._crypto.decrypt(tenant_id, encrypted, version)
+            except Exception as exc:  # ключ номера недоступен — кандидат пропускается
+                log.warning("closest_plate_skipped", session_id=str(candidate.id), error_type=type(exc).__name__)
+                continue
+            distance = plate_distance(plate.value, number.value)
+            if best is None or distance < best[2]:
+                best = (candidate, number, distance)
+        return best
+
+    async def _camera_correct(
+        self,
+        uow: UnitOfWork,
+        repos: ParkingRepositories,
+        session_id: UUID,
+        plate: PlateNumber,
+        camera_id: UUID | None,
+        event_id: UUID | None,
+    ) -> None:
+        """Номер въехавшей машины по второму, полному чтению камеры. Исходное чтение остаётся в anpr_event (I-16),
+        исправление — в аудите от имени камеры. Двойное чтение уже создало сессию с верным номером — лишняя уходит."""
+        session = await repos.sessions.get_for_update(session_id)
+        if session is None or session.status is not SessionStatus.ACTIVE:
+            return
+        plate_hash = self._crypto.hash(session.tenant_id, plate)
+        encrypted, version = self._crypto.encrypt(session.tenant_id, plate)
+        vehicle = await repos.vehicles.upsert(plate_hash, encrypted, version, self._clock.now())
+        if vehicle.id == session.vehicle_id:
+            return
+        other = await repos.sessions.active_for_vehicle(session.lot_id, vehicle.id)
+        if other is not None and other.id != session.id:
+            session.mark_orphan(DUPLICATE_READ)
+            await repos.sessions.save(session)
+            self._emit_session_events(uow, session)
+            uow.after_commit(self._decrement(session.lot_id))
+            return
+        old = session.correct_plate(vehicle.id)
+        await repos.sessions.save(session)
+        await repos.audit.record(
+            AuditEntry(
+                tenant_id=session.tenant_id,
+                action="PLATE_CORRECTED_BY_CAMERA",
+                entity_type="parking_session",
+                entity_id=session.id,
+                lot_id=session.lot_id,
+                session_id=session.id,
+                actor_type=ActorType.CAMERA,
+                actor_id=camera_id,
+                reason="второе полное чтение номера",
+                payload={"old_vehicle_id": str(old), "new_vehicle_id": str(vehicle.id), "event_id": str(event_id)},
+            )
+        )
+        # PlateCorrected/вебхук «номер исправлен» — для коррекции сотрудником (с ним и номером исправления);
+        # исправление камерой за секунды после въезда — только аудит, исходное чтение — в anpr_event (I-16)
+        session.pull_events()
 
     async def _exit_session(
         self,

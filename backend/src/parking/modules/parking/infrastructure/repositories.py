@@ -319,6 +319,23 @@ class SqlSessionRepository:
         )
         return {r.camera: int(r.n) for r in rows}
 
+    async def recent_entries(
+        self, lot_id: UUID, *, since: datetime, until: datetime
+    ) -> list[tuple[ParkingSession, bytes, int]]:
+        rows = await self._s.execute(
+            text(
+                f"""
+                SELECT {_SESSION_COLUMNS}, v.plate_encrypted, v.enc_key_version
+                FROM parking_session s JOIN vehicle v ON v.id = s.vehicle_id
+                WHERE s.lot_id = :lot AND s.status = 'ACTIVE' AND NOT s.entry_unknown
+                  AND s.entry_time >= :since AND s.entry_time <= :until
+                ORDER BY s.entry_time DESC LIMIT 10
+                """
+            ),
+            {"lot": lot_id, "since": since, "until": until},
+        )
+        return [(_session(r), bytes(r.plate_encrypted), int(r.enc_key_version)) for r in rows]
+
     async def recent_visits(self, lot_id: UUID, vehicle_id: UUID, *, since: datetime, before: datetime) -> int:
         row = (
             await self._s.execute(

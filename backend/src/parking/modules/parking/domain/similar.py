@@ -7,7 +7,13 @@
 
 from __future__ import annotations
 
+import re
+
 SIMILAR_MAX = 3.0  # дальше — уже другая машина; кассир видит лучшие кандидаты первыми
+DOUBLE_READ_MAX = 3.0  # неполное чтение (регион обрезан кадром) той же машины: Q475UAUA / 90Q475UA
+# коды регионов Узбекистана (первые две цифры номера): «00Q708MA» — регион не попал в кадр, такое чтение неполное
+UZ_REGIONS = frozenset({"01", "10", "20", "25", "30", "40", "50", "60", "70", "75", "80", "85", "90", "95"})
+_UZ_FULL = re.compile(r"^(\d{2})([A-Z]\d{3}[A-Z]{2}|\d{3}[A-Z]{3})$")
 
 _CONFUSED = (
     "O0DQU",
@@ -31,6 +37,20 @@ def _substitution(a: str, b: str) -> float:
     if a == b:
         return 0.0
     return 0.5 if (a, b) in _PAIRS else 1.0
+
+
+def is_complete(plate: str) -> bool:
+    """Полный узбекский номер с существующим регионом: 90Z525CA, 01123ABC — да; Q475UAUA, 00Q708MA — нет."""
+    m = _UZ_FULL.match(plate)
+    return m is not None and m.group(1) in UZ_REGIONS
+
+
+def same_car_reads(a: str, b: str) -> bool:
+    """Два чтения одной машины одной камерой за секунды: отличается только регион (70Z525CA / 90Z525CA) или одно
+    из чтений неполное и похоже (Q475UAUA / 90Q475UA). Две разные машины подряд (90A123BC, 90A124BC) — нет."""
+    if len(a) == len(b) and a[2:] == b[2:]:
+        return True
+    return (not is_complete(a) or not is_complete(b)) and plate_distance(a, b) <= DOUBLE_READ_MAX
 
 
 def plate_distance(a: str, b: str) -> float:

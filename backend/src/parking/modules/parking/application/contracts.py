@@ -37,6 +37,7 @@ class EntryStatus(enum.StrEnum):
     MANUAL_REVIEW = "MANUAL_REVIEW"
     LATE_ACCEPTED = "LATE_ACCEPTED"
     ENTRY_EXIT_ECHO = "ENTRY_EXIT_ECHO"  # камера въезда увидела выезжающую машину — ни сессии, ни стрелы
+    ENTRY_DOUBLE_READ = "ENTRY_DOUBLE_READ"  # та же машина прочитана повторно за секунды — сессия уже есть
 
 
 class ExitStatus(enum.StrEnum):
