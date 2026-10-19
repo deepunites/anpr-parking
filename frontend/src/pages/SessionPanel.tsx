@@ -220,6 +220,8 @@ export function SessionPanel({ sessionId, timeZone, onClose, onOpenSession, hotk
   const now = useNow();
   const isActive = session.data?.status === "ACTIVE" || session.data?.status === "MANUAL_REVIEW";
   const quote = useQuote(sessionId, canCash && isActive && !pending && !paid);
+  // бесплатное время (сумма 0) — кнопок оплаты и счёта нет: платить нечего
+  const owes = quote.data !== undefined && quote.data.amount_minor > 0 && isActive;
 
   useEffect(() => {
     if (correcting) plateInput.current?.focus(); // поле ввода уже в фокусе (§3)
@@ -232,14 +234,14 @@ export function SessionPanel({ sessionId, timeZone, onClose, onOpenSession, hotk
       if (canCash && pending && !confirmCash.isPending) {
         e.preventDefault();
         confirmCash.mutate({ paymentId: pending.id, amountMinor: pending.amount_minor }, { onSuccess: onPaid });
-      } else if (canCash && !pending && quote.data && isActive && !prepay.isPending) {
+      } else if (canCash && !pending && quote.data && owes && !prepay.isPending) {
         e.preventDefault();
         prepay.mutate({ amount_minor: quote.data.amount_minor }, { onSuccess: onPaid });
       }
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [hotkeys, canCash, pending, quote.data, isActive, confirmCash, prepay, correcting, opening, t, onPaid]);
+  }, [hotkeys, canCash, pending, quote.data, owes, confirmCash, prepay, correcting, opening, t, onPaid]);
 
   if (session.isPending) return <Skeleton className="h-64 w-full" />;
   if (session.isError) return <ErrorBox error={session.error} onRetry={() => void session.refetch()} />;
@@ -321,13 +323,13 @@ export function SessionPanel({ sessionId, timeZone, onClose, onOpenSession, hotk
           <Button variant="money" size="lg" className="w-full" disabled={confirmCash.isPending} onClick={() => confirmCash.mutate({ paymentId: pending.id, amountMinor: pending.amount_minor }, { onSuccess: onPaid })} data-testid="confirm-cash">
             {t("session.payCash")} · {pending.amount.formatted}
           </Button>
-        ) : canCash && quote.data && isActive ? (
+        ) : canCash && quote.data && owes ? (
           <Button variant="money" size="lg" className="w-full" disabled={prepay.isPending} title={t("session.prepayHint")} onClick={() => prepay.mutate({ amount_minor: quote.data.amount_minor }, { onSuccess: onPaid })} data-testid="prepay-cash">
             {t("session.prepay")} · {quote.data.amount.formatted}
           </Button>
         ) : null}
         {/* водитель оплатил по QR площадки из машины — кассир сверяет поступление в приложении банка */}
-        {canCash && (pending || (quote.data && isActive)) && (
+        {canCash && (pending || owes) && (
           <Button variant="outline" size="lg" className="w-full" onClick={() => setByQr(true)} data-testid="paid-by-qr">
             {t("session.paidByQr")}
           </Button>
@@ -347,7 +349,7 @@ export function SessionPanel({ sessionId, timeZone, onClose, onOpenSession, hotk
             <Button variant="outline" size="lg" disabled={printReceipt.isPending} onClick={() => print(paidPayment.id, true)} data-testid="print-receipt-main">
               <Printer className="h-4 w-4" aria-hidden="true" /> {t("session.printReceipt")}
             </Button>
-          ) : (pending || (quote.data && isActive)) ? (
+          ) : pending || owes ? (
             <Button
               variant="outline"
               size="lg"
