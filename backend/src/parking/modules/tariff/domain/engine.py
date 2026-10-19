@@ -35,10 +35,13 @@ class AccessTerms:
 
     kind: AccessKind = AccessKind.NORMAL
     discount_percent: int = 0
+    previous_visits: int = 0  # въездов этой машины на площадку за 24 часа до этого (лазейка бесплатных минут)
 
     def __post_init__(self) -> None:
         if not 0 <= self.discount_percent <= 100:
             raise ValidationError("discount_percent must be within 0..100")
+        if self.previous_visits < 0:
+            raise ValidationError("previous_visits must be non-negative")
 
 
 @dataclass(frozen=True, slots=True)
@@ -137,6 +140,17 @@ def calculate(  # noqa: PLR0912, PLR0915 — алгоритм намеренно
     if access.kind in (AccessKind.VIP, AccessKind.SUBSCRIPTION):
         line = BreakdownLine("PRIVILEGE", entry, exit, raw_minutes, zero, access.kind.value)
         return TariffCalculation(zero, 0, (access.kind.value,), (line,), zero, zero, mode, step)
+    if (
+        rules.free_visits is not None
+        and rules.repeat_visit_price is not None
+        and access.kind is AccessKind.NORMAL
+        and access.previous_visits >= rules.free_visits
+    ):
+        # бесплатные минуты — только первым free_visits въездам за 24 часа: дальше сразу фиксированная плата
+        # (MediaPark, 2026-10-19: выезжали на 20-й минуте и въезжали снова, чтобы не платить)
+        price = rules.repeat_visit_price
+        line = BreakdownLine("REPEAT_VISIT", entry, exit, raw_minutes, price, f"visit {access.previous_visits + 1}/24h")
+        return TariffCalculation(price, raw_minutes, ("REPEAT_VISIT",), (line,), price, zero, mode, step)
     if raw_minutes <= rules.grace_minutes:
         line = BreakdownLine("GRACE", entry, exit, raw_minutes, zero, f"within {rules.grace_minutes} min grace")
         return TariffCalculation(zero, 0, ("GRACE",), (line,), zero, zero, mode, step)

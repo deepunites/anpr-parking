@@ -7,6 +7,7 @@ from uuid import UUID
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from parking.modules.access.application.ports import SubscriptionRecord
 from parking.modules.access.domain.rules import AccessKind, AccessRule
 
 _COLUMNS = """
@@ -114,6 +115,32 @@ class SqlAccessRuleRepository:
 class SqlSubscriptionRepository:
     def __init__(self, session: AsyncSession) -> None:
         self._s = session
+
+    async def get(self, subscription_id: UUID) -> SubscriptionRecord | None:
+        row = (
+            await self._s.execute(
+                text(
+                    """
+                    SELECT s.id, s.lot_id, s.plan_code, s.starts_at, s.ends_at, s.price, r.plate_encrypted, r.enc_key_version
+                    FROM subscription s JOIN access_rule r ON r.source_id = s.id AND r.tenant_id = s.tenant_id
+                    WHERE s.id = :id LIMIT 1
+                    """
+                ),
+                {"id": subscription_id},
+            )
+        ).first()
+        if row is None:
+            return None
+        return SubscriptionRecord(
+            id=row.id,
+            lot_id=row.lot_id,
+            plan_code=row.plan_code,
+            starts_at=row.starts_at,
+            ends_at=row.ends_at,
+            price_minor=int(row.price),
+            plate_encrypted=bytes(row.plate_encrypted),
+            enc_key_version=int(row.enc_key_version),
+        )
 
     async def add(
         self,

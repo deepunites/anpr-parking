@@ -124,6 +124,10 @@ SAMPLES: dict[tuple[str, str], dict[str, Any]] = {
         "path": {"rule_id": "{rule_id}"},
         "json": {"reason": "rbac contract test"},
     },
+    ("POST", "/api/v1/subscriptions/{subscription_id}/receipt"): {
+        "path": {"subscription_id": "00000000-0000-4000-8000-000000000000"},
+        "json": {"lot_id": str(LOT_A1)},
+    },
     ("POST", "/api/v1/subscriptions"): {
         "json": {
             "plate": "01S{n}",
@@ -154,6 +158,7 @@ SAMPLES: dict[tuple[str, str], dict[str, Any]] = {
         "json": {"reason": "rbac contract test"},
     },
     ("GET", "/api/v1/sessions/{session_id}/similar"): {"path": {"session_id": "{session_id}"}},
+    ("POST", "/api/v1/sessions/{session_id}/bill"): {"path": {"session_id": "{session_id}"}},
     ("POST", "/api/v1/sessions/{session_id}/match"): {
         "path": {"session_id": "{session_id}"},
         "json": {"target_session_id": "{session_id}", "reason": "rbac contract test"},

@@ -1376,6 +1376,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/sessions/{session_id}/bill": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Print Bill
+         * @description «Счёт к оплате» до оплаты (машина у выезда): номер машины крупно, въезд, сколько стоит, сумма. Номера чека нет —
+         *     он выдаётся чеку оплаты. 422 NOTHING_TO_PAY — платить нечего (сессия закрыта).
+         */
+        post: operations["print_bill_api_v1_sessions__session_id__bill_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/sessions/{session_id}/close": {
         parameters: {
             query?: never;
@@ -1750,6 +1771,26 @@ export interface paths {
         put?: never;
         /** Create Subscription */
         post: operations["create_subscription_api_v1_subscriptions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/subscriptions/{subscription_id}/receipt": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Print Subscription Receipt
+         * @description Чек месячного абонемента: номер машины крупно, срок, сумма, сквозной номер чека (повторная печать — тот же).
+         */
+        post: operations["print_subscription_receipt_api_v1_subscriptions__subscription_id__receipt_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2400,6 +2441,13 @@ export interface components {
              * @description Сверка с суммой, посчитанной на бэкенде
              */
             amount_minor?: number | null;
+            /**
+             * Method
+             * @description QR — водитель оплатил по QR площадки, кассир видит поступление (не в кассу смены)
+             * @default CASH
+             * @enum {string}
+             */
+            method: "CASH" | "QR";
             /**
              * Reason
              * @description Обязателен при нестандартной сумме
@@ -3652,6 +3700,12 @@ export interface components {
              */
             exit_inferred_after_minutes: number;
             /**
+             * Exit Min Stay Seconds
+             * @description выезд раньше — эхо въезда (камера выезда видит въезжающую машину), 0 — выкл.
+             * @default 0
+             */
+            exit_min_stay_seconds: number;
+            /**
              * Late Event Window Hours
              * @default 24
              */
@@ -3661,6 +3715,11 @@ export interface components {
              * @default 72
              */
             max_session_hours: number;
+            /**
+             * Payment Qr
+             * @description строка статичного QR банка (UzQR) — печатается на «Счёте к оплате»
+             */
+            payment_qr?: string | null;
             /**
              * Reentry Window Minutes
              * @default 5
@@ -4420,6 +4479,24 @@ export interface components {
             /** Trial Ends At */
             trial_ends_at: string | null;
             usage: components["schemas"]["UsageOut"];
+        };
+        /** SubscriptionReceiptOut */
+        SubscriptionReceiptOut: {
+            /** Amount Minor */
+            amount_minor: number;
+            /** Printed */
+            printed: boolean;
+            /** Receipt No */
+            receipt_no: string;
+        };
+        /** SubscriptionReceiptRequest */
+        SubscriptionReceiptRequest: {
+            /**
+             * Lot Id
+             * Format: uuid
+             * @description площадка, где продан абонемент (номер чека — по площадке)
+             */
+            lot_id: string;
         };
         /** TenantOut */
         TenantOut: {
@@ -7595,6 +7672,37 @@ export interface operations {
             };
         };
     };
+    print_bill_api_v1_sessions__session_id__bill_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReceiptOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     close_session_api_v1_sessions__session_id__close_post: {
         parameters: {
             query?: never;
@@ -8308,6 +8416,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RuleOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    print_subscription_receipt_api_v1_subscriptions__subscription_id__receipt_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                subscription_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SubscriptionReceiptRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SubscriptionReceiptOut"];
                 };
             };
             /** @description Validation Error */

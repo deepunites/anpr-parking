@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
-import { Ban, Car, Crown, Plus, Search, ShieldCheck, Ticket } from "lucide-react";
-import { useTranslation } from "@/i18n";
+import { Ban, Car, Crown, Plus, Printer, Search, ShieldCheck, Ticket } from "lucide-react";
+import { fmt, useTranslation } from "@/i18n";
 import { useAuth } from "@/auth/useAuth";
 import { hasPermission } from "@/auth/store";
-import { useAddRule, useCreateSubscription, useLots, useRevokeRule, useRules, useVehicleLookup, type RuleOut } from "@/api/hooks";
+import { useAddRule, useCreateSubscription, useLots, usePrintSubscriptionReceipt, useRevokeRule, useRules, useVehicleLookup, type RuleOut } from "@/api/hooks";
+import { useLotStore } from "@/lib/lot";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input, Label, Select, Textarea } from "@/components/ui/input";
@@ -49,12 +50,30 @@ function dateOnly(iso: string | null | undefined, lang: string): string {
   return new Date(iso).toLocaleDateString(lang === "uz" ? "uz-UZ" : "ru-RU", { day: "2-digit", month: "2-digit", year: "numeric" });
 }
 
+/** Площадка для номера чека абонемента: выбранная в шапке, иначе первая. */
+function useReceiptLot(): string | null {
+  const { lotId } = useLotStore();
+  const lots = useLots();
+  return lotId ?? lots.data?.[0]?.id ?? null;
+}
+
+function receiptToasts(t: (key: string) => string) {
+  return {
+    onSuccess: (r: { receipt_no: string }) => toast.ok(fmt(t("session.receiptPrinted"), { n: r.receipt_no })),
+    onError: () => toast.warn(t("session.receiptFailed")),
+  };
+}
+
 /* Машины и доступ: белый список, VIP, абонементы, чёрный список — с маркой, моделью и цветом. Добавление — одна
    форма: номер (кириллица сама становится латиницей), марка с подсказками, что разрешить и на какой срок. */
 export function VehiclesPage() {
   const { t, i18n } = useTranslation();
   const { me } = useAuth();
   const canWrite = hasPermission(me, "access:write");
+  // месячный абонемент продаёт только администратор (MediaPark, 2026-10-19)
+  const canSell = hasPermission(me, "passes:sell");
+  const printSub = usePrintSubscriptionReceipt();
+  const receiptLot = useReceiptLot();
   const rules = useRules(true);
   const lots = useLots();
   const [tab, setTab] = useState<"all" | Kind>("all");
@@ -164,6 +183,17 @@ export function VehiclesPage() {
                     </Td>
                     <Td className="max-w-[220px] truncate text-[12.5px] text-ink-2">{r.reason ?? ""}</Td>
                     <Td>
+                      {canSell && r.kind === "SUBSCRIPTION" && r.source_id && receiptLot && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          disabled={printSub.isPending}
+                          onClick={() => printSub.mutate({ subscriptionId: r.source_id!, lotId: r.lot_id ?? receiptLot }, receiptToasts(t))}
+                          data-testid="subscription-receipt"
+                        >
+                          <Printer className="h-4 w-4" aria-hidden="true" /> {t("session.printReceipt")}
+                        </Button>
+                      )}
                       {canWrite && (
                         <Button variant="ghost" size="sm" onClick={() => setRevoking(r)} data-testid="revoke-rule">
                           {t("vehicles.revoke")}
@@ -179,7 +209,7 @@ export function VehiclesPage() {
       </Card>
 
       <Drawer open={adding} onClose={() => setAdding(false)} title={t("vehicles.add")} width="w-[520px]">
-        <AddVehicleForm onDone={() => setAdding(false)} />
+        <AddVehicleForm canSell={canSell} onDone={() => setAdding(false)} />
       </Drawer>
 
       <Dialog open={revoking !== null} onClose={() => setRevoking(null)} title={t("vehicles.revokeTitle")}>
@@ -226,11 +256,13 @@ function RevokeForm({ rule, onDone }: { rule: RuleOut; onDone: () => void }) {
   );
 }
 
-function AddVehicleForm({ onDone }: { onDone: () => void }) {
+function AddVehicleForm({ onDone, canSell }: { onDone: () => void; canSell: boolean }) {
   const { t } = useTranslation();
   const lots = useLots();
   const addRule = useAddRule();
   const addSub = useCreateSubscription();
+  const printSub = usePrintSubscriptionReceipt();
+  const receiptLot = useReceiptLot();
   const [plate, setPlate] = useState("");
   const [vehicle, setVehicle] = useState<VehicleValue>(EMPTY_VEHICLE);
   const [kind, setKind] = useState<Kind>("WHITELIST");
@@ -266,7 +298,14 @@ function AddVehicleForm({ onDone }: { onDone: () => void }) {
     if (kind === "SUBSCRIPTION") {
       addSub.mutate(
         { plate, lot_id: lotId || null, plan_code: effectiveMonths === 12 ? "YEAR" : `M${effectiveMonths}`, starts_at: now.toISOString(), ends_at: until!.toISOString(), price_minor: Math.round(Number(price) * 100), reason: note.trim(), ...attrs },
-        done,
+        {
+          onSuccess: (rule) => {
+            done.onSuccess();
+            // продан — сразу чек с номером; принтер выключен — абонемент всё равно продан, чек можно напечатать из списка
+            const lot = lotId || receiptLot;
+            if (rule.source_id && lot) printSub.mutate({ subscriptionId: rule.source_id, lotId: lot }, receiptToasts(t));
+          },
+        },
       );
     } else {
       addRule.mutate(
@@ -294,13 +333,19 @@ function AddVehicleForm({ onDone }: { onDone: () => void }) {
             {vehicleLabel(t, lookup.data.make, lookup.data.model, lookup.data.color) ? `: ${vehicleLabel(t, lookup.data.make, lookup.data.model, lookup.data.color)}` : ""}
           </p>
         )}
+        {/* опечатка в номере — и VIP/абонемент не сработают (MediaPark: VIP на 90U475BA, камеры читали 90Q475UA) */}
+        {lookup.data && !lookup.data.known && (
+          <p className="mt-1 rounded-lg bg-warn-soft px-2.5 py-1.5 text-[12.5px] font-semibold text-warn-ink" data-testid="vehicle-unseen">
+            {t("vehicles.unseen")}
+          </p>
+        )}
       </div>
       <VehicleFields value={vehicle} onChange={setVehicle} />
 
       <div>
         <div className="mb-1 text-[11px] font-bold uppercase tracking-[0.06em] text-muted">{t("vehicles.whatAllow")}</div>
         <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label={t("vehicles.whatAllow")}>
-          {KINDS.map((k) => (
+          {KINDS.filter((k) => k.kind !== "SUBSCRIPTION" || canSell).map((k) => (
             <button
               key={k.kind}
               type="button"

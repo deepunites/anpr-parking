@@ -96,6 +96,11 @@ class SessionRepository(Protocol):
         в том числе «выезд без въезда» на разбор, созданный с exited_since."""
         ...
 
+    async def recent_visits(self, lot_id: UUID, vehicle_id: UUID, *, since: datetime, before: datetime) -> int:
+        """Сколько раз машина побывала на площадке с въездом в [since, before): закрытые сессии, стоявшие дольше
+        минуты (эхо въезда и ошибки камер не считаются)."""
+        ...
+
     async def open_in_lot_before(self, lot_id: UUID, older_than: datetime, *, limit: int) -> list[ParkingSession]:
         """Незакрытые сессии площадки (ACTIVE, MANUAL_REVIEW) с въездом раньше older_than — от старых к новым."""
         ...

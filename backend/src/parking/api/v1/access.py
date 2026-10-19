@@ -160,11 +160,11 @@ async def revoke_rule(
     "/subscriptions",
     response_model=RuleOut,
     status_code=status.HTTP_201_CREATED,
-    openapi_extra=permission_extra(Permission.ACCESS_WRITE),
+    openapi_extra=permission_extra(Permission.PASSES_SELL),
 )
 async def create_subscription(
     body: CreateSubscriptionRequest,
-    user: Annotated[CurrentUser, Depends(require(Permission.ACCESS_WRITE))],
+    user: Annotated[CurrentUser, Depends(require(Permission.PASSES_SELL))],
     container: Annotated[Container, Depends(get_container)],
 ) -> RuleOut:
     cmd = CreateSubscriptionCommand(
@@ -178,6 +178,32 @@ async def create_subscription(
     rule = await container.access.create_subscription(user, cmd, reason=body.reason)
     vehicle = await _save_vehicle(container, user, body.plate, body.make, body.model, body.color, body.reason)
     return RuleOut.of(rule, vehicle)
+
+
+class SubscriptionReceiptRequest(BaseModel):
+    lot_id: UUID = Field(description="площадка, где продан абонемент (номер чека — по площадке)")
+
+
+class SubscriptionReceiptOut(BaseModel):
+    printed: bool
+    receipt_no: str
+    amount_minor: int
+
+
+@router.post(
+    "/subscriptions/{subscription_id}/receipt",
+    response_model=SubscriptionReceiptOut,
+    openapi_extra=permission_extra(Permission.PASSES_SELL),
+)
+async def print_subscription_receipt(
+    subscription_id: UUID,
+    body: SubscriptionReceiptRequest,
+    user: Annotated[CurrentUser, Depends(require(Permission.PASSES_SELL))],
+    container: Annotated[Container, Depends(get_container)],
+) -> SubscriptionReceiptOut:
+    """Чек месячного абонемента: номер машины крупно, срок, сумма, сквозной номер чека (повторная печать — тот же)."""
+    receipt_no, amount = await container.receipts.print_subscription(user, subscription_id, body.lot_id)
+    return SubscriptionReceiptOut(printed=True, receipt_no=receipt_no, amount_minor=amount.minor)
 
 
 @router.get("/access/resolve", response_model=DecisionOut, openapi_extra=permission_extra(Permission.ACCESS_READ))

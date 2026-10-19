@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Protocol
 from uuid import UUID
@@ -34,7 +35,23 @@ class DecisionCache(Protocol):
         ...
 
 
+@dataclass(frozen=True, slots=True)
+class SubscriptionRecord:
+    id: UUID
+    lot_id: UUID | None
+    plan_code: str
+    starts_at: datetime
+    ends_at: datetime
+    price_minor: int
+    plate_encrypted: bytes
+    enc_key_version: int
+
+
 class SubscriptionRepository(Protocol):
+    async def get(self, subscription_id: UUID) -> SubscriptionRecord | None:
+        """Абонемент и шифртекст номера (из его правила доступа) — для чека."""
+        ...
+
     async def add(
         self,
         *,

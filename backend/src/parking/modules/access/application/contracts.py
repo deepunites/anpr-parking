@@ -19,6 +19,19 @@ class AccessResolver(Protocol):
 
 
 @dataclass(frozen=True, slots=True)
+class SubscriptionView:
+    """Проданный абонемент: открытый номер — только для чека и администратора, никогда не в лог."""
+
+    id: UUID
+    lot_id: UUID | None
+    plate: str
+    plan_code: str
+    starts_at: datetime
+    ends_at: datetime
+    price_minor: int
+
+
+@dataclass(frozen=True, slots=True)
 class AccessRuleView:
     id: UUID
     lot_id: UUID | None

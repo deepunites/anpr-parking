@@ -22,12 +22,43 @@ def encode(text: str) -> bytes:
     return text.translate(_PLAIN).encode("cp866", errors="replace")
 
 
+QR_MODULE = 6  # точек на модуль: QR оплаты (~190 символов) — около 4 см на 80-мм ленте
+
+
+def qr(data: str, module: int = QR_MODULE) -> bytes:
+    """QR-код командами принтера (GS ( k, модель 2, коррекция M) по центру: строка банка как есть, без перекодировки."""
+    payload = data.encode("ascii")
+    size = len(payload) + 3
+    return (
+        ESC
+        + b"a\x01"
+        + GS
+        + b"(k\x04\x00\x31\x41\x32\x00"  # модель 2
+        + GS
+        + b"(k\x03\x00\x31\x43"
+        + bytes([module])  # размер модуля
+        + GS
+        + b"(k\x03\x00\x31\x45\x31"  # коррекция ошибок M
+        + GS
+        + b"(k"
+        + bytes([size % 256, size // 256])
+        + b"\x31\x50\x30"
+        + payload  # данные
+        + GS
+        + b"(k\x03\x00\x31\x51\x30"  # печать
+        + b"\n"
+    )
+
+
 def render(lines: list[ReceiptLine]) -> bytes:
     out = bytearray(ESC + b"@" + FS + b"." + ESC + b"t" + bytes([17]))  # сброс, без китайского режима, PC866
     for line in lines:
+        if line.qr:
+            out += qr(line.qr)
+            continue
         out += ESC + b"a" + (b"\x01" if line.center else b"\x00")
         out += ESC + b"E" + (b"\x01" if line.bold else b"\x00")
-        out += GS + b"!" + (b"\x11" if line.big else b"\x00")
+        out += GS + b"!" + (b"\x22" if line.huge else b"\x11" if line.big else b"\x00")  # втрое / вдвое
         out += encode(line.text) + b"\n"
     out += GS + b"!" + b"\x00" + ESC + b"d" + bytes([4]) + GS + b"V" + b"\x42\x00"  # подача и отрезка
     return bytes(out)

@@ -274,6 +274,8 @@ def test_rules_json_contract_every_field() -> None:
         holiday_override=DayOverride(free=True),
         first_hour_prorated=True,
         amount_step=Money(100000),
+        free_visits=2,
+        repeat_visit_price=Money(800000),
     )
     data = r.to_json()
     assert data == {
@@ -291,10 +293,15 @@ def test_rules_json_contract_every_field() -> None:
         "holiday": {"price_per_hour": None, "first_hour_price": None, "daily_max": None, "free": True},
         "first_hour_prorated": True,
         "amount_step": 100000,
+        "free_visits": 2,
+        "repeat_visit_price": 800000,
     }
     assert TariffRules.from_json(data) == r
-    old = {k: v for k, v in data.items() if k not in ("first_hour_prorated", "amount_step")}
-    assert TariffRules.from_json(old) == replace(r, first_hour_prorated=False, amount_step=None), "старые версии"
+    new = ("first_hour_prorated", "amount_step", "free_visits", "repeat_visit_price")
+    old = {k: v for k, v in data.items() if k not in new}
+    assert TariffRules.from_json(old) == replace(
+        r, first_hour_prorated=False, amount_step=None, free_visits=None, repeat_visit_price=None
+    ), "старые версии"
     minimal = rules().to_json()
     assert minimal["daily_max"] is None and minimal["overnight"] is None
     assert minimal["weekday_overrides"] is None and minimal["holiday"] is None
@@ -355,3 +362,21 @@ def test_per_minute_first_hour_rounded_to_thousand() -> None:
         TariffRules.from_json({**r.to_json(), "first_hour_prorated": "yes"})
     with pytest.raises(ValidationError):
         rules(amount_step=Money(0))
+
+
+def test_repeat_visit_pays_at_once_without_free_minutes() -> None:
+    """MediaPark (2026-10-19): выезд на 20-й минуте и снова въезд — третий въезд за 24 часа сразу 8 000."""
+    r = rules(grace_minutes=30, free_visits=2, repeat_visit_price=Money(800000))
+    entry = at(2026, 10, 19, 10, 0)
+    exit = entry + timedelta(minutes=5)
+    assert calc(entry, exit, r, AccessTerms(previous_visits=1)).amount == Money(0), "второй въезд — бесплатные минуты"
+    third = calc(entry, exit, r, AccessTerms(previous_visits=2))
+    assert third.amount == Money(800000) and third.applied_rules == ("REPEAT_VISIT",)
+    assert calc(entry, entry + timedelta(hours=5), r, AccessTerms(previous_visits=5)).amount == Money(800000)
+    vip = calc(entry, exit, r, AccessTerms(kind=AccessKind.VIP, previous_visits=9))
+    assert vip.amount == Money(0), "VIP и абонемент правило не трогает"
+    assert calc(entry, exit, rules(grace_minutes=30), AccessTerms(previous_visits=9)).amount == Money(0), (
+        "правило выключено"
+    )
+    with pytest.raises(ValidationError):
+        rules(free_visits=-1)

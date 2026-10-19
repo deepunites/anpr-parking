@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import json
 from datetime import date, datetime
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, Query, Request, Response, status
@@ -19,6 +19,7 @@ from parking.modules.billing.application.contracts import (
     DiscrepancyRecord,
     DiscrepancyStatus,
     Payment,
+    PaymentMethod,
     Provider,
     ReconciliationRun,
     Refund,
@@ -114,6 +115,9 @@ class PaymentOut(BaseModel):
 
 class CashRequest(BaseModel):
     amount_minor: int | None = Field(default=None, ge=0, description="Сверка с суммой, посчитанной на бэкенде")
+    method: Literal["CASH", "QR"] = Field(
+        default="CASH", description="QR — водитель оплатил по QR площадки, кассир видит поступление (не в кассу смены)"
+    )
     reason: str | None = Field(
         default=None, min_length=3, max_length=500, description="Обязателен при нестандартной сумме"
     )
@@ -348,7 +352,13 @@ async def prepay_cash(
 ) -> PaymentOut:
     """Предоплата наличными до выезда (A-11): PAID сразу, окно выезда lot.exit_grace_minutes."""
     return PaymentOut.of(
-        await container.cashier.prepay(user, session_id, declared_amount=body.amount_minor, reason=body.reason)
+        await container.cashier.prepay(
+            user,
+            session_id,
+            declared_amount=body.amount_minor,
+            reason=body.reason,
+            method=PaymentMethod(body.method),
+        )
     )
 
 
@@ -376,7 +386,9 @@ async def confirm_cash(
 ) -> PaymentOut:
     """PENDING-обязательство саги оплачено наличными в открытой смене кассира; повтор → тот же платёж."""
     return PaymentOut.of(
-        await container.cashier.confirm_cash(user, payment_id, declared_amount=body.amount_minor, reason=body.reason)
+        await container.cashier.confirm_cash(
+            user, payment_id, declared_amount=body.amount_minor, reason=body.reason, method=PaymentMethod(body.method)
+        )
     )
 
 
@@ -400,6 +412,22 @@ async def print_receipt(
     503 PRINTER_NOT_CONFIGURED / PRINTER_UNAVAILABLE — оплата от этого не зависит."""
     receipt = await container.receipts.print_payment(user, payment_id)
     return ReceiptOut(printed=True, receipt_no=receipt.receipt_no, amount=MoneyOut(**receipt.amount.to_dict()))
+
+
+@router.post(
+    "/sessions/{session_id}/bill",
+    response_model=ReceiptOut,
+    openapi_extra=permission_extra(Permission.PAYMENT_READ),
+)
+async def print_bill(
+    session_id: UUID,
+    user: Annotated[CurrentUser, Depends(require(Permission.PAYMENT_READ))],
+    container: Annotated[Container, Depends(get_container)],
+) -> ReceiptOut:
+    """«Счёт к оплате» до оплаты (машина у выезда): номер машины крупно, въезд, сколько стоит, сумма. Номера чека нет —
+    он выдаётся чеку оплаты. 422 NOTHING_TO_PAY — платить нечего (сессия закрыта)."""
+    bill = await container.receipts.print_bill(user, session_id)
+    return ReceiptOut(printed=True, receipt_no="", amount=MoneyOut(**bill.amount.to_dict()))
 
 
 @router.post(

@@ -16,6 +16,8 @@ export interface TariffForm {
   mode: RoundingMode;
   firstProrated: boolean; // первый час поминутно от цены, а не целым часом
   amountStep: string; // итог к ближайшему кратному, сум; "" — без округления
+  freeVisits: string; // бесплатные минуты — только стольким въездам за 24 часа; "" — без ограничения
+  repeatPrice: string; // со следующего въезда — сразу столько, сум
   dailyMax: string;
   night: boolean;
   nightStart: string;
@@ -35,6 +37,8 @@ export const DEFAULT_FORM: TariffForm = {
   mode: "UP",
   firstProrated: false,
   amountStep: "",
+  freeVisits: "",
+  repeatPrice: "",
   dailyMax: "30000",
   night: false,
   nightStart: "22:00",
@@ -57,6 +61,8 @@ export function formFromRules(rules: Rules | null | undefined): TariffForm {
     mode: (rules["rounding_mode"] as RoundingMode | undefined) ?? "UP",
     firstProrated: rules["first_hour_prorated"] === true,
     amountStep: sum(rules["amount_step"]),
+    freeVisits: typeof rules["free_visits"] === "number" ? String(rules["free_visits"]) : "",
+    repeatPrice: sum(rules["repeat_visit_price"]),
     dailyMax: sum(rules["daily_max"]),
     night: Boolean(overnight),
     nightStart: overnight?.start ?? DEFAULT_FORM.nightStart,
@@ -92,6 +98,11 @@ export function rulesFromForm(form: TariffForm, base?: Rules | null): Rules | nu
   const dailyMax = toMinor(form.dailyMax);
   const amountStep = toMinor(form.amountStep);
   if (amountStep === undefined || amountStep === 0) return null;
+  // лазейка бесплатных минут: оба поля вместе — сколько въездов с бесплатными минутами и сколько с остальных
+  const freeVisits = form.freeVisits.trim() === "" ? null : Number(form.freeVisits);
+  const repeatPrice = toMinor(form.repeatPrice);
+  if (freeVisits !== null && (!Number.isInteger(freeVisits) || freeVisits < 0 || freeVisits > 100)) return null;
+  if (repeatPrice === undefined || (freeVisits === null) !== (repeatPrice === null)) return null;
   if (!Number.isInteger(grace) || grace < 0 || grace > 1440 || !Number.isInteger(step) || step < 1) return null;
   if (firstHour == null || perHour == null || dailyMax === undefined) return null;
   let overnight: Rules | null = null;
@@ -124,6 +135,8 @@ export function rulesFromForm(form: TariffForm, base?: Rules | null): Rules | nu
     rounding_step_minutes: step,
     first_hour_prorated: form.firstProrated,
     amount_step: amountStep,
+    free_visits: freeVisits,
+    repeat_visit_price: repeatPrice,
     daily_max: dailyMax,
     overnight,
     weekday_overrides: Object.keys(overrides).length > 0 ? overrides : null,

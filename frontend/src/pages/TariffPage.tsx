@@ -88,6 +88,8 @@ function RulesSummary({ rules }: { rules: Rules }) {
   parts.push(fmt(t("tariffPage.sPer"), { v: money(rules["price_per_hour"]) }));
   parts.push(fmt(t("tariffPage.sRound"), { mode: t(`tariffPage.mode${String(rules["rounding_mode"] ?? "UP")}`), n: Number(rules["rounding_step_minutes"] ?? 1) }));
   if (typeof rules["amount_step"] === "number") parts.push(fmt(t("tariffPage.sAmountStep"), { v: money(rules["amount_step"]) }));
+  if (typeof rules["free_visits"] === "number" && typeof rules["repeat_visit_price"] === "number")
+    parts.push(fmt(t("tariffPage.sRepeat"), { n: rules["free_visits"], next: rules["free_visits"] + 1, v: money(rules["repeat_visit_price"]) }));
   if (typeof rules["daily_max"] === "number") parts.push(fmt(t("tariffPage.sDaily"), { v: money(rules["daily_max"]) }));
   const night = rules["overnight"] as { start: string; end: string; price_per_hour: number } | null | undefined;
   if (night) parts.push(fmt(t("tariffPage.sNight"), { from: night.start, to: night.end, v: money(night.price_per_hour) }));
@@ -182,6 +184,8 @@ function TariffEditor({ lotId, planId, current, timeZone }: { lotId: string; pla
               ))}
             </Select>
           </div>
+          {field("freeVisits", t("tariffPage.freeVisits"), t("tariffPage.freeVisitsPh"))}
+          {field("repeatPrice", t("tariffPage.repeatPrice"), t("tariffPage.freeVisitsPh"))}
           <label className="flex items-center gap-2 self-end pb-2 text-[14px] font-bold">
             <input type="checkbox" checked={form.firstProrated} onChange={(e) => set("firstProrated", e.target.checked)} data-testid="tf-first-prorated" />
             {t("tariffPage.firstProrated")}

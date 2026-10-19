@@ -99,14 +99,19 @@ STALE_BATCH = 2000  # за один раз; больше — повторить 
 CLOSED_MANUAL, ORPHANED_MANUAL, STALE_MANUAL = "CLOSED_MANUAL", "ORPHANED_MANUAL", "STALE_MANUAL"
 EXIT_MATCHED = "EXIT_MATCHED"  # «выезд без въезда» оказался машиной на площадке — номер прочитан с ошибкой
 SIMILAR_LIMIT, SIMILAR_SCAN = 5, 3000  # кандидатов кассиру; машин на площадке, среди которых ищем
+REPEAT_WINDOW = timedelta(hours=24)  # въезды машины, после которых бесплатных минут уже нет (тариф: free_visits)
 
 
 def _key(*parts: object) -> bytes:
     return hashlib.sha256(":".join(str(p) for p in parts).encode()).digest()
 
 
-def _terms(decision: AccessDecision) -> AccessTerms:
-    return AccessTerms(kind=TariffAccessKind(decision.kind.value), discount_percent=decision.discount_percent)
+def _terms(decision: AccessDecision, previous_visits: int = 0) -> AccessTerms:
+    return AccessTerms(
+        kind=TariffAccessKind(decision.kind.value),
+        discount_percent=decision.discount_percent,
+        previous_visits=previous_visits,
+    )
 
 
 class ParkingService:
@@ -264,6 +269,16 @@ class ParkingService:
         session = await repos.sessions.open_for_plate(cmd.lot_id, hashes, for_update=True)
         if session is None:
             return await self._exit_without_session(uow, repos, lot, cmd)
+        since_entry = cmd.event_time - session.entry_time
+        if (
+            session.status is SessionStatus.ACTIVE
+            and not session.entry_unknown
+            and timedelta(0) <= since_entry < timedelta(seconds=lot.policies.exit_min_stay_seconds)
+        ):
+            # эхо въезда: камера выезда видит въезжающую машину сзади — иначе сессия закрылась бы в бесплатные минуты,
+            # стрела открылась, а машина осталась бы на площадке без сессии (MediaPark, 2026-10-19)
+            log.info("exit_entry_echo", session_id=str(session.id), seconds=int(since_entry.total_seconds()))
+            return ExitResult(status=ExitStatus.EXIT_ENTRY_ECHO, session_id=session.id)
         return await self._exit_session(uow, repos, session, cmd)
 
     async def _exit_session(
@@ -317,7 +332,10 @@ class ParkingService:
         elif cmd.event_time <= session.entry_time:  # «выезд без въезда»: машину видели только на выезде — 0 минут
             amount, calculation = 0, {"amount": 0, "applied_rules": ["NO_STAY"], "billing_minutes": 0}
         else:
-            calc = await repos.tariff.calculate(cmd.lot_id, session.entry_time, cmd.event_time, _terms(cmd.decision))
+            visits = await self._recent_visits(repos, session, cmd.decision)
+            calc = await repos.tariff.calculate(
+                cmd.lot_id, session.entry_time, cmd.event_time, _terms(cmd.decision, visits)
+            )
             amount, calculation = calc.amount.minor, calc.to_snapshot()
         now = self._clock.now()
         saga = ExitSaga(
@@ -438,7 +456,8 @@ class ParkingService:
                 decision = await self._access.resolve(
                     tenant_id, session.lot_id, self._crypto.hash(tenant_id, plate), at
                 )
-            calc = await repos.tariff.calculate(session.lot_id, session.entry_time, at, _terms(decision))
+            visits = await self._recent_visits(repos, session, decision)
+            calc = await repos.tariff.calculate(session.lot_id, session.entry_time, at, _terms(decision, visits))
             snapshot = calc.to_snapshot()
             snapshot["access"] = {"kind": decision.kind.value, "discount_percent": decision.discount_percent}
             return ExitQuote(
@@ -972,6 +991,16 @@ class ParkingService:
                 raise ConflictError("exit was not started for the matched car", code="EXIT_NOT_STARTED")
             await self._audit(repos, actor, "EXIT_STARTED_MANUAL", target, reason, {"saga_id": str(saga.id)})
             return SagaView.of(saga)
+
+    @staticmethod
+    async def _recent_visits(repos: ParkingRepositories, session: ParkingSession, decision: AccessDecision) -> int:
+        """Въезды машины за 24 часа до этого — тарифу (бесплатные минуты только первым въездам); VIP, абонемент и
+        белый список лазейкой не пользуются — для них запрос не нужен."""
+        if decision.kind is not AccessKind.NORMAL:
+            return 0
+        return await repos.sessions.recent_visits(
+            session.lot_id, session.vehicle_id, since=session.entry_time - REPEAT_WINDOW, before=session.entry_time
+        )
 
     async def _plate(self, repos: ParkingRepositories, tenant_id: UUID, vehicle_id: UUID) -> PlateNumber:
         stored = await repos.vehicles.plate_encrypted(vehicle_id)

@@ -1,12 +1,12 @@
 [
   {
     "name": "POST /api/v1/camera/events",
-    "trace_id": "b334548ecca7e5b641f90fea443b036e",
-    "span_id": "7166d82a5bf9f4f8",
+    "trace_id": "4b165d7b731b5c791fca9d1edd4b143d",
+    "span_id": "d41df9a17e3e1171",
     "parent_span_id": null,
     "kind": "SERVER",
     "status": "UNSET",
-    "duration_ms": 101.655,
+    "duration_ms": 93.232,
     "attributes": {
       "http.scheme": "http",
       "http.host": "test:None",
@@ -24,12 +24,12 @@
   },
   {
     "name": "exit.start",
-    "trace_id": "b334548ecca7e5b641f90fea443b036e",
-    "span_id": "9c50d33b258ac9ba",
-    "parent_span_id": "7166d82a5bf9f4f8",
+    "trace_id": "4b165d7b731b5c791fca9d1edd4b143d",
+    "span_id": "66b63c0dd7f09f28",
+    "parent_span_id": "d41df9a17e3e1171",
     "kind": "INTERNAL",
     "status": "UNSET",
-    "duration_ms": 62.82,
+    "duration_ms": 61.013,
     "attributes": {
       "tenant_id": "00000000-0000-4000-8000-0000000000a1",
       "lot_id": "00000000-0000-4000-8000-00000000a101",
@@ -40,12 +40,12 @@
   },
   {
     "name": "tariff.calculate",
-    "trace_id": "b334548ecca7e5b641f90fea443b036e",
-    "span_id": "9a53ec3aba785060",
-    "parent_span_id": "9c50d33b258ac9ba",
+    "trace_id": "4b165d7b731b5c791fca9d1edd4b143d",
+    "span_id": "b6cc8456931d236f",
+    "parent_span_id": "66b63c0dd7f09f28",
     "kind": "INTERNAL",
     "status": "UNSET",
-    "duration_ms": 12.175,
+    "duration_ms": 12.193,
     "attributes": {
       "lot_id": "00000000-0000-4000-8000-00000000a101",
       "access_kind": "NORMAL"
@@ -53,43 +53,85 @@
   },
   {
     "name": "consume parking.exit.requested.v1",
-    "trace_id": "b334548ecca7e5b641f90fea443b036e",
-    "span_id": "da70519f24c89f07",
-    "parent_span_id": "7166d82a5bf9f4f8",
+    "trace_id": "4b165d7b731b5c791fca9d1edd4b143d",
+    "span_id": "5b8ebb8a3dae2ab8",
+    "parent_span_id": "d41df9a17e3e1171",
     "kind": "INTERNAL",
     "status": "UNSET",
-    "duration_ms": 96.977,
+    "duration_ms": 79.983,
     "attributes": {
       "parking.flow": "exit",
       "tenant_id": "00000000-0000-4000-8000-0000000000a1",
       "lot_id": "00000000-0000-4000-8000-00000000a101",
-      "session_id": "6a7d96b9-8684-481b-b6b3-ece2f4863858",
+      "session_id": "c5e2be3b-eddc-49e3-935f-ac4c477bcd14",
       "event_type": "parking.exit.requested.v1"
     }
   },
   {
+    "name": "connect",
+    "trace_id": "4b165d7b731b5c791fca9d1edd4b143d",
+    "span_id": "a3fe1e9b7e33187f",
+    "parent_span_id": "5b8ebb8a3dae2ab8",
+    "kind": "CLIENT",
+    "status": "UNSET",
+    "duration_ms": 6.821,
+    "attributes": {
+      "db.name": "parking_test",
+      "db.user": "app_critical",
+      "db.system": "postgresql"
+    }
+  },
+  {
     "name": "exit.saga.step",
-    "trace_id": "b334548ecca7e5b641f90fea443b036e",
-    "span_id": "44d533c400ac9f24",
-    "parent_span_id": "da70519f24c89f07",
+    "trace_id": "4b165d7b731b5c791fca9d1edd4b143d",
+    "span_id": "9b9c8973899ef21a",
+    "parent_span_id": "5b8ebb8a3dae2ab8",
     "kind": "INTERNAL",
     "status": "UNSET",
-    "duration_ms": 77.247,
+    "duration_ms": 64.196,
     "attributes": {
       "tenant_id": "00000000-0000-4000-8000-0000000000a1",
-      "saga_id": "5ec03092-ffc5-485d-941e-ad003462cdf4",
+      "saga_id": "2ff55c20-2c84-4aec-aefa-d69558fe06f9",
       "parking.flow": "exit",
       "saga.state": "BARRIER_OPENING"
     }
   },
   {
-    "name": "XACK",
-    "trace_id": "b334548ecca7e5b641f90fea443b036e",
-    "span_id": "f4b12764f102d52a",
-    "parent_span_id": "da70519f24c89f07",
+    "name": "connect",
+    "trace_id": "4b165d7b731b5c791fca9d1edd4b143d",
+    "span_id": "9744098dce7dba71",
+    "parent_span_id": "9b9c8973899ef21a",
     "kind": "CLIENT",
     "status": "UNSET",
-    "duration_ms": 0.802,
+    "duration_ms": 1.33,
+    "attributes": {
+      "db.name": "parking_test",
+      "db.user": "app_critical",
+      "db.system": "postgresql"
+    }
+  },
+  {
+    "name": "connect",
+    "trace_id": "4b165d7b731b5c791fca9d1edd4b143d",
+    "span_id": "0a8df7839aeeef53",
+    "parent_span_id": "5b8ebb8a3dae2ab8",
+    "kind": "CLIENT",
+    "status": "UNSET",
+    "duration_ms": 0.786,
+    "attributes": {
+      "db.name": "parking_test",
+      "db.user": "app_critical",
+      "db.system": "postgresql"
+    }
+  },
+  {
+    "name": "XACK",
+    "trace_id": "4b165d7b731b5c791fca9d1edd4b143d",
+    "span_id": "257ae6a6f5edd6e2",
+    "parent_span_id": "5b8ebb8a3dae2ab8",
+    "kind": "CLIENT",
+    "status": "UNSET",
+    "duration_ms": 1.076,
     "attributes": {
       "db.statement": "XACK ? ? ?",
       "db.redis.args_length": 4,
@@ -99,43 +141,85 @@
   },
   {
     "name": "consume billing.payment.confirmed.v1",
-    "trace_id": "b334548ecca7e5b641f90fea443b036e",
-    "span_id": "95fe7c76a7bf8785",
-    "parent_span_id": "44d533c400ac9f24",
+    "trace_id": "4b165d7b731b5c791fca9d1edd4b143d",
+    "span_id": "338f9d232d656d81",
+    "parent_span_id": "9b9c8973899ef21a",
     "kind": "INTERNAL",
     "status": "UNSET",
-    "duration_ms": 44.42,
+    "duration_ms": 32.058,
     "attributes": {
       "parking.flow": "exit",
       "tenant_id": "00000000-0000-4000-8000-0000000000a1",
       "lot_id": "00000000-0000-4000-8000-00000000a101",
-      "session_id": "6a7d96b9-8684-481b-b6b3-ece2f4863858",
+      "session_id": "c5e2be3b-eddc-49e3-935f-ac4c477bcd14",
       "event_type": "billing.payment.confirmed.v1"
     }
   },
   {
+    "name": "connect",
+    "trace_id": "4b165d7b731b5c791fca9d1edd4b143d",
+    "span_id": "2e120813b8d19b51",
+    "parent_span_id": "338f9d232d656d81",
+    "kind": "CLIENT",
+    "status": "UNSET",
+    "duration_ms": 4.475,
+    "attributes": {
+      "db.name": "parking_test",
+      "db.user": "app_critical",
+      "db.system": "postgresql"
+    }
+  },
+  {
     "name": "exit.saga.step",
-    "trace_id": "b334548ecca7e5b641f90fea443b036e",
-    "span_id": "2debf6a9369067f9",
-    "parent_span_id": "95fe7c76a7bf8785",
+    "trace_id": "4b165d7b731b5c791fca9d1edd4b143d",
+    "span_id": "29e744bf2febc129",
+    "parent_span_id": "338f9d232d656d81",
     "kind": "INTERNAL",
     "status": "UNSET",
-    "duration_ms": 20.803,
+    "duration_ms": 19.13,
     "attributes": {
       "tenant_id": "00000000-0000-4000-8000-0000000000a1",
-      "saga_id": "5ec03092-ffc5-485d-941e-ad003462cdf4",
+      "saga_id": "2ff55c20-2c84-4aec-aefa-d69558fe06f9",
       "parking.flow": "exit",
       "saga.state": "BARRIER_OPENING"
     }
   },
   {
-    "name": "XACK",
-    "trace_id": "b334548ecca7e5b641f90fea443b036e",
-    "span_id": "95ab2347167a5f4c",
-    "parent_span_id": "95fe7c76a7bf8785",
+    "name": "connect",
+    "trace_id": "4b165d7b731b5c791fca9d1edd4b143d",
+    "span_id": "62378b6e0b05b008",
+    "parent_span_id": "29e744bf2febc129",
     "kind": "CLIENT",
     "status": "UNSET",
-    "duration_ms": 0.628,
+    "duration_ms": 0.883,
+    "attributes": {
+      "db.name": "parking_test",
+      "db.user": "app_critical",
+      "db.system": "postgresql"
+    }
+  },
+  {
+    "name": "connect",
+    "trace_id": "4b165d7b731b5c791fca9d1edd4b143d",
+    "span_id": "ad23e551be0649a2",
+    "parent_span_id": "338f9d232d656d81",
+    "kind": "CLIENT",
+    "status": "UNSET",
+    "duration_ms": 0.837,
+    "attributes": {
+      "db.name": "parking_test",
+      "db.user": "app_critical",
+      "db.system": "postgresql"
+    }
+  },
+  {
+    "name": "XACK",
+    "trace_id": "4b165d7b731b5c791fca9d1edd4b143d",
+    "span_id": "06d8216c9b3a85d3",
+    "parent_span_id": "338f9d232d656d81",
+    "kind": "CLIENT",
+    "status": "UNSET",
+    "duration_ms": 0.611,
     "attributes": {
       "db.statement": "XACK ? ? ?",
       "db.redis.args_length": 4,
@@ -145,43 +229,99 @@
   },
   {
     "name": "consume devices.barrier.command_requested.v1",
-    "trace_id": "b334548ecca7e5b641f90fea443b036e",
-    "span_id": "59178b8d6f15479d",
-    "parent_span_id": "44d533c400ac9f24",
+    "trace_id": "4b165d7b731b5c791fca9d1edd4b143d",
+    "span_id": "301481a9ac14e680",
+    "parent_span_id": "9b9c8973899ef21a",
     "kind": "INTERNAL",
     "status": "UNSET",
-    "duration_ms": 33.915,
+    "duration_ms": 28.621,
     "attributes": {
       "parking.flow": "exit",
       "tenant_id": "00000000-0000-4000-8000-0000000000a1",
       "lot_id": "00000000-0000-4000-8000-00000000a101",
-      "session_id": "6a7d96b9-8684-481b-b6b3-ece2f4863858",
+      "session_id": "c5e2be3b-eddc-49e3-935f-ac4c477bcd14",
       "event_type": "devices.barrier.command_requested.v1"
     }
   },
   {
+    "name": "connect",
+    "trace_id": "4b165d7b731b5c791fca9d1edd4b143d",
+    "span_id": "fbd0045b4c0c03b7",
+    "parent_span_id": "301481a9ac14e680",
+    "kind": "CLIENT",
+    "status": "UNSET",
+    "duration_ms": 0.843,
+    "attributes": {
+      "db.name": "parking_test",
+      "db.user": "app_critical",
+      "db.system": "postgresql"
+    }
+  },
+  {
+    "name": "connect",
+    "trace_id": "4b165d7b731b5c791fca9d1edd4b143d",
+    "span_id": "c6fb47acd4794bc6",
+    "parent_span_id": "301481a9ac14e680",
+    "kind": "CLIENT",
+    "status": "UNSET",
+    "duration_ms": 0.663,
+    "attributes": {
+      "db.name": "parking_test",
+      "db.user": "app_critical",
+      "db.system": "postgresql"
+    }
+  },
+  {
     "name": "barrier.open",
-    "trace_id": "b334548ecca7e5b641f90fea443b036e",
-    "span_id": "1d701168acaf65c5",
-    "parent_span_id": "59178b8d6f15479d",
+    "trace_id": "4b165d7b731b5c791fca9d1edd4b143d",
+    "span_id": "cd5359459ee6c7a3",
+    "parent_span_id": "301481a9ac14e680",
     "kind": "INTERNAL",
     "status": "UNSET",
-    "duration_ms": 0.277,
+    "duration_ms": 0.321,
     "attributes": {
       "lot_id": "00000000-0000-4000-8000-00000000a101",
-      "session_id": "6a7d96b9-8684-481b-b6b3-ece2f4863858",
+      "session_id": "c5e2be3b-eddc-49e3-935f-ac4c477bcd14",
       "tenant_id": "00000000-0000-4000-8000-0000000000a1",
       "parking.flow": "exit"
     }
   },
   {
-    "name": "XACK",
-    "trace_id": "b334548ecca7e5b641f90fea443b036e",
-    "span_id": "a31ed686b1d6c081",
-    "parent_span_id": "59178b8d6f15479d",
+    "name": "connect",
+    "trace_id": "4b165d7b731b5c791fca9d1edd4b143d",
+    "span_id": "980785167a939435",
+    "parent_span_id": "301481a9ac14e680",
     "kind": "CLIENT",
     "status": "UNSET",
-    "duration_ms": 0.886,
+    "duration_ms": 0.761,
+    "attributes": {
+      "db.name": "parking_test",
+      "db.user": "app_critical",
+      "db.system": "postgresql"
+    }
+  },
+  {
+    "name": "connect",
+    "trace_id": "4b165d7b731b5c791fca9d1edd4b143d",
+    "span_id": "36018185e29aed14",
+    "parent_span_id": "301481a9ac14e680",
+    "kind": "CLIENT",
+    "status": "UNSET",
+    "duration_ms": 0.834,
+    "attributes": {
+      "db.name": "parking_test",
+      "db.user": "app_critical",
+      "db.system": "postgresql"
+    }
+  },
+  {
+    "name": "XACK",
+    "trace_id": "4b165d7b731b5c791fca9d1edd4b143d",
+    "span_id": "5cb478931f85b629",
+    "parent_span_id": "301481a9ac14e680",
+    "kind": "CLIENT",
+    "status": "UNSET",
+    "duration_ms": 0.759,
     "attributes": {
       "db.statement": "XACK ? ? ?",
       "db.redis.args_length": 4,
@@ -191,43 +331,71 @@
   },
   {
     "name": "consume devices.barrier.command_completed.v1",
-    "trace_id": "b334548ecca7e5b641f90fea443b036e",
-    "span_id": "e749d5070e240f42",
-    "parent_span_id": "59178b8d6f15479d",
+    "trace_id": "4b165d7b731b5c791fca9d1edd4b143d",
+    "span_id": "e498918000195540",
+    "parent_span_id": "301481a9ac14e680",
     "kind": "INTERNAL",
     "status": "UNSET",
-    "duration_ms": 77.511,
+    "duration_ms": 57.153,
     "attributes": {
       "parking.flow": "exit",
       "tenant_id": "00000000-0000-4000-8000-0000000000a1",
       "lot_id": "00000000-0000-4000-8000-00000000a101",
-      "session_id": "6a7d96b9-8684-481b-b6b3-ece2f4863858",
+      "session_id": "c5e2be3b-eddc-49e3-935f-ac4c477bcd14",
       "event_type": "devices.barrier.command_completed.v1"
     }
   },
   {
+    "name": "connect",
+    "trace_id": "4b165d7b731b5c791fca9d1edd4b143d",
+    "span_id": "856c42111796a991",
+    "parent_span_id": "e498918000195540",
+    "kind": "CLIENT",
+    "status": "UNSET",
+    "duration_ms": 1.719,
+    "attributes": {
+      "db.name": "parking_test",
+      "db.user": "app_critical",
+      "db.system": "postgresql"
+    }
+  },
+  {
     "name": "exit.saga.step",
-    "trace_id": "b334548ecca7e5b641f90fea443b036e",
-    "span_id": "83ce9f450b4307b0",
-    "parent_span_id": "e749d5070e240f42",
+    "trace_id": "4b165d7b731b5c791fca9d1edd4b143d",
+    "span_id": "fc147450b6c9365d",
+    "parent_span_id": "e498918000195540",
     "kind": "INTERNAL",
     "status": "UNSET",
-    "duration_ms": 56.644,
+    "duration_ms": 45.933,
     "attributes": {
       "tenant_id": "00000000-0000-4000-8000-0000000000a1",
-      "saga_id": "5ec03092-ffc5-485d-941e-ad003462cdf4",
+      "saga_id": "2ff55c20-2c84-4aec-aefa-d69558fe06f9",
       "parking.flow": "exit",
       "saga.state": "COMPLETED"
     }
   },
   {
-    "name": "INCRBY EXPIRE",
-    "trace_id": "b334548ecca7e5b641f90fea443b036e",
-    "span_id": "83e3d7c88f9b98cd",
-    "parent_span_id": "83ce9f450b4307b0",
+    "name": "connect",
+    "trace_id": "4b165d7b731b5c791fca9d1edd4b143d",
+    "span_id": "cfe908956b2d1b52",
+    "parent_span_id": "fc147450b6c9365d",
     "kind": "CLIENT",
     "status": "UNSET",
-    "duration_ms": 1.198,
+    "duration_ms": 0.581,
+    "attributes": {
+      "db.name": "parking_test",
+      "db.user": "app_critical",
+      "db.system": "postgresql"
+    }
+  },
+  {
+    "name": "INCRBY EXPIRE",
+    "trace_id": "4b165d7b731b5c791fca9d1edd4b143d",
+    "span_id": "3aea247e199ec3ff",
+    "parent_span_id": "fc147450b6c9365d",
+    "kind": "CLIENT",
+    "status": "UNSET",
+    "duration_ms": 4.253,
     "attributes": {
       "db.statement": "INCRBY ? ?\nEXPIRE ? ?",
       "db.redis.pipeline_length": 2,
@@ -236,13 +404,27 @@
     }
   },
   {
-    "name": "XACK",
-    "trace_id": "b334548ecca7e5b641f90fea443b036e",
-    "span_id": "de6cee1f674c2adc",
-    "parent_span_id": "e749d5070e240f42",
+    "name": "connect",
+    "trace_id": "4b165d7b731b5c791fca9d1edd4b143d",
+    "span_id": "c7c23508699f2c59",
+    "parent_span_id": "e498918000195540",
     "kind": "CLIENT",
     "status": "UNSET",
-    "duration_ms": 2.204,
+    "duration_ms": 0.796,
+    "attributes": {
+      "db.name": "parking_test",
+      "db.user": "app_critical",
+      "db.system": "postgresql"
+    }
+  },
+  {
+    "name": "XACK",
+    "trace_id": "4b165d7b731b5c791fca9d1edd4b143d",
+    "span_id": "0d9c8350ad58ce8d",
+    "parent_span_id": "e498918000195540",
+    "kind": "CLIENT",
+    "status": "UNSET",
+    "duration_ms": 0.673,
     "attributes": {
       "db.statement": "XACK ? ? ?",
       "db.redis.args_length": 4,
@@ -252,28 +434,28 @@
   },
   {
     "name": "consume parking.session.closed.v1",
-    "trace_id": "b334548ecca7e5b641f90fea443b036e",
-    "span_id": "148f0653466c3cd7",
-    "parent_span_id": "83ce9f450b4307b0",
+    "trace_id": "4b165d7b731b5c791fca9d1edd4b143d",
+    "span_id": "4fe952b14db170d3",
+    "parent_span_id": "fc147450b6c9365d",
     "kind": "INTERNAL",
     "status": "UNSET",
-    "duration_ms": 5.104,
+    "duration_ms": 3.342,
     "attributes": {
       "parking.flow": "exit",
       "tenant_id": "00000000-0000-4000-8000-0000000000a1",
       "lot_id": "00000000-0000-4000-8000-00000000a101",
-      "session_id": "6a7d96b9-8684-481b-b6b3-ece2f4863858",
+      "session_id": "c5e2be3b-eddc-49e3-935f-ac4c477bcd14",
       "event_type": "parking.session.closed.v1"
     }
   },
   {
     "name": "XACK",
-    "trace_id": "b334548ecca7e5b641f90fea443b036e",
-    "span_id": "517a1e38d8258b72",
-    "parent_span_id": "148f0653466c3cd7",
+    "trace_id": "4b165d7b731b5c791fca9d1edd4b143d",
+    "span_id": "3cd91685acccedc2",
+    "parent_span_id": "4fe952b14db170d3",
     "kind": "CLIENT",
     "status": "UNSET",
-    "duration_ms": 4.937,
+    "duration_ms": 3.204,
     "attributes": {
       "db.statement": "XACK ? ? ?",
       "db.redis.args_length": 4,

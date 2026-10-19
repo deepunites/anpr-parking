@@ -8,6 +8,8 @@
   price_per_hour         — далее поминутный прорейт от часовой цены
   rounding               — длительность округляется до шага (UP | DOWN | NEAREST), минимум один шаг после грейса
   amount_step            — итог округляется до кратного (к ближайшему; 1000 сум — без мелочи на сдачу)
+  free_visits, repeat_visit_price — бесплатные минуты только первым free_visits въездам машины за 24 часа, дальше
+                           сразу repeat_visit_price (обычные машины; VIP, абонемент, белый список — как раньше)
   daily_max              — потолок за локальный календарный день площадки
   overnight              — окно (может пересекать полночь), внутри которого действует своя часовая цена
   weekday_overrides      — переопределения по дню недели (0 = понедельник … 6 = воскресенье)
@@ -80,6 +82,8 @@ class TariffRules:
     holiday_override: DayOverride | None = None
     first_hour_prorated: bool = False
     amount_step: Money | None = None
+    free_visits: int | None = None
+    repeat_visit_price: Money | None = None
 
     def __post_init__(self) -> None:
         if not 0 <= self.grace_minutes <= MAX_MINUTES or not 1 <= self.rounding_step_minutes <= MAX_MINUTES:
@@ -90,6 +94,10 @@ class TariffRules:
                 raise ValidationError("tariff prices must be non-negative")
         if self.amount_step is not None and not self.amount_step.minor > 0:
             raise ValidationError("amount_step must be positive")
+        if self.free_visits is not None and not 0 <= self.free_visits <= 100:
+            raise ValidationError("free_visits must be 0..100")
+        if self.repeat_visit_price is not None and self.repeat_visit_price.is_negative:
+            raise ValidationError("repeat_visit_price must be non-negative")
         if any(k not in range(7) for k in self.weekday_overrides):
             raise ValidationError("weekday_overrides keys must be 0..6")
 
@@ -136,6 +144,10 @@ class TariffRules:
                 holiday_override=holiday,
                 first_hour_prorated=_bool(raw.get("first_hour_prorated", False)),
                 amount_step=_money(raw["amount_step"]) if raw.get("amount_step") is not None else None,
+                free_visits=_int(raw["free_visits"]) if raw.get("free_visits") is not None else None,
+                repeat_visit_price=(
+                    _money(raw["repeat_visit_price"]) if raw.get("repeat_visit_price") is not None else None
+                ),
             )
         except (KeyError, TypeError, ValueError, AttributeError) as exc:  # AttributeError: "holiday": 5 и т. п.
             raise ValidationError(f"invalid tariff rules: {exc}") from None
@@ -161,6 +173,8 @@ class TariffRules:
             "holiday": _override_json(self.holiday_override) if self.holiday_override else None,
             "first_hour_prorated": self.first_hour_prorated,
             "amount_step": self.amount_step.minor if self.amount_step else None,
+            "free_visits": self.free_visits,
+            "repeat_visit_price": self.repeat_visit_price.minor if self.repeat_visit_price else None,
         }
 
 

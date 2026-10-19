@@ -28,6 +28,8 @@ const DEFAULT_POLICIES: PoliciesModel = {
   reentry_window_minutes: 5,
   barrier_cidr_allowlist: [],
   show_full_plates: false,
+  exit_min_stay_seconds: 0,
+  payment_qr: null,
 };
 
 function suggestCode(name: string, existing: LotOut[]): string {
@@ -271,6 +273,16 @@ function LotForm({ lot, existing, onDone }: { lot?: LotOut; existing: LotOut[]; 
           <Label htmlFor="p-max">{t("lots.maxSession")}</Label>
           <Input id="p-max" type="number" min={1} max={720} value={policies.max_session_hours} onChange={(e) => set("max_session_hours", Number(e.target.value))} />
         </div>
+      </div>
+      <div className="mt-3">
+        <Label htmlFor="p-payment-qr">{t("lots.paymentQr")}</Label>
+        <Input id="p-payment-qr" className="font-mono text-[12px]" value={policies.payment_qr ?? ""} onChange={(e) => set("payment_qr", e.target.value.trim() || null)} placeholder="000201010211…" data-testid="lot-payment-qr" />
+        <p className="text-[12px] font-semibold text-muted">{t("lots.paymentQrHint")}</p>
+      </div>
+      <div className="mt-3">
+        <Label htmlFor="p-min-stay">{t("lots.minStay")}</Label>
+        <Input id="p-min-stay" type="number" min={0} max={600} className="max-w-[10rem]" value={policies.exit_min_stay_seconds ?? 0} onChange={(e) => set("exit_min_stay_seconds", Number(e.target.value))} data-testid="lot-min-stay" />
+        <p className="text-[12px] font-semibold text-muted">{t("lots.minStayHint")}</p>
       </div>
       <Label htmlFor="lot-cidrs" className="mt-3">
         {t("lots.cidrs")}

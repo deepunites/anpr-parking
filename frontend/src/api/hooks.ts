@@ -255,8 +255,9 @@ export function useOpenBarrier() {
 export function useConfirmCash(sessionId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({ paymentId, amountMinor }: { paymentId: string; amountMinor: number }) =>
-      unwrap(await api.POST("/api/v1/payments/{payment_id}/confirm-cash", { params: { path: { payment_id: paymentId } }, body: { amount_minor: amountMinor } })),
+    // method QR — водитель оплатил по QR площадки, кассир увидел поступление (в наличные смены не входит)
+    mutationFn: async ({ paymentId, amountMinor, method = "CASH" }: { paymentId: string; amountMinor: number; method?: "CASH" | "QR" }) =>
+      unwrap(await api.POST("/api/v1/payments/{payment_id}/confirm-cash", { params: { path: { payment_id: paymentId } }, body: { amount_minor: amountMinor, method } })),
     onSuccess: () => void qc.invalidateQueries({ queryKey: keys.payments(sessionId) }),
   });
 }
@@ -269,11 +270,18 @@ export function usePrintReceipt() {
   });
 }
 
+/** «Счёт к оплате» до оплаты — машина у выезда: номер крупно, въезд, сколько стоит, сумма (без номера чека). */
+export function usePrintBill(sessionId: string) {
+  return useMutation({
+    mutationFn: async () => unwrap(await api.POST("/api/v1/sessions/{session_id}/bill", { params: { path: { session_id: sessionId } } })),
+  });
+}
+
 export function usePrepayCash(sessionId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (body: { amount_minor: number | null; reason?: string | null }) =>
-      unwrap(await api.POST("/api/v1/sessions/{session_id}/payments", { params: { path: { session_id: sessionId } }, body })),
+    mutationFn: async (body: { amount_minor: number | null; reason?: string | null; method?: "CASH" | "QR" }) =>
+      unwrap(await api.POST("/api/v1/sessions/{session_id}/payments", { params: { path: { session_id: sessionId } }, body: { ...body, method: body.method ?? "CASH" } })),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: keys.payments(sessionId) });
       void qc.invalidateQueries({ queryKey: keys.quote(sessionId) });
@@ -475,6 +483,14 @@ export function useAddRule() {
   return useMutation({
     mutationFn: async (body: AddRuleRequest) => unwrap(await api.POST("/api/v1/access-rules", { body })),
     onSuccess: () => void qc.invalidateQueries({ queryKey: keys.rules }),
+  });
+}
+
+/** Чек месячного абонемента: номер машины крупно, срок, сумма, сквозной номер (повторная печать — тот же номер). */
+export function usePrintSubscriptionReceipt() {
+  return useMutation({
+    mutationFn: async ({ subscriptionId, lotId }: { subscriptionId: string; lotId: string }) =>
+      unwrap(await api.POST("/api/v1/subscriptions/{subscription_id}/receipt", { params: { path: { subscription_id: subscriptionId } }, body: { lot_id: lotId } })),
   });
 }
 

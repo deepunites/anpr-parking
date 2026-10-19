@@ -46,6 +46,7 @@ class ExitStatus(enum.StrEnum):
     EXIT_WITHOUT_SESSION = "EXIT_WITHOUT_SESSION"
     MANUAL_REVIEW = "MANUAL_REVIEW"
     LATE_ACCEPTED = "LATE_ACCEPTED"
+    EXIT_ENTRY_ECHO = "EXIT_ENTRY_ECHO"  # камера выезда увидела въезжающую машину — ни выезда, ни стрелы
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)

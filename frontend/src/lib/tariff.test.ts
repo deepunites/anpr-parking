@@ -13,6 +13,8 @@ describe("rulesFromForm", () => {
       rounding_step_minutes: 15,
       first_hour_prorated: false,
       amount_step: null,
+      free_visits: null,
+      repeat_visit_price: null,
       daily_max: 3_000_000,
       overnight: null,
       weekday_overrides: null,
@@ -26,6 +28,16 @@ describe("rulesFromForm", () => {
     expect(rules["amount_step"]).toBe(100_000);
     expect(formFromRules(rules)).toMatchObject({ firstProrated: true, amountStep: "1000" });
     expect(rulesFromForm({ ...form, amountStep: "0" })).toBeNull();
+  });
+
+  it("free minutes only for the first visits in 24 hours, then a flat price (MediaPark loophole)", () => {
+    const rules = rulesFromForm({ ...base(), freeVisits: "2", repeatPrice: "8000" })!;
+    expect(rules["free_visits"]).toBe(2);
+    expect(rules["repeat_visit_price"]).toBe(800_000);
+    expect(formFromRules(rules)).toMatchObject({ freeVisits: "2", repeatPrice: "8000" });
+    expect(rulesFromForm({ ...base(), freeVisits: "2", repeatPrice: "" })).toBeNull(); // только вместе
+    expect(rulesFromForm({ ...base(), freeVisits: "", repeatPrice: "8000" })).toBeNull();
+    expect(rulesFromForm({ ...base(), freeVisits: "1.5", repeatPrice: "8000" })).toBeNull();
   });
 
   it("supports night price, free and special days, and an empty daily cap", () => {

@@ -319,6 +319,22 @@ class SqlSessionRepository:
         )
         return {r.camera: int(r.n) for r in rows}
 
+    async def recent_visits(self, lot_id: UUID, vehicle_id: UUID, *, since: datetime, before: datetime) -> int:
+        row = (
+            await self._s.execute(
+                text(
+                    """
+                    SELECT count(*) AS n FROM parking_session s
+                    WHERE s.lot_id = :lot AND s.vehicle_id = :v AND s.status = 'CLOSED'
+                      AND s.entry_time >= :since AND s.entry_time < :before
+                      AND s.exit_time - s.entry_time >= interval '1 minute'
+                    """
+                ),
+                {"lot": lot_id, "v": vehicle_id, "since": since, "before": before},
+            )
+        ).first()
+        return 0 if row is None else int(row.n)
+
     async def exiting_session(
         self, lot_id: UUID, vehicle_id: UUID, *, exited_since: datetime, saga_since: datetime
     ) -> UUID | None:

@@ -883,6 +883,16 @@
             "description": "Сверка с суммой, посчитанной на бэкенде",
             "title": "Amount Minor"
           },
+          "method": {
+            "default": "CASH",
+            "description": "QR — водитель оплатил по QR площадки, кассир видит поступление (не в кассу смены)",
+            "enum": [
+              "CASH",
+              "QR"
+            ],
+            "title": "Method",
+            "type": "string"
+          },
           "reason": {
             "anyOf": [
               {
@@ -4665,6 +4675,14 @@
             "title": "Exit Inferred After Minutes",
             "type": "integer"
           },
+          "exit_min_stay_seconds": {
+            "default": 0,
+            "description": "выезд раньше — эхо въезда (камера выезда видит въезжающую машину), 0 — выкл.",
+            "maximum": 600.0,
+            "minimum": 0.0,
+            "title": "Exit Min Stay Seconds",
+            "type": "integer"
+          },
           "late_event_window_hours": {
             "default": 24,
             "maximum": 168.0,
@@ -4678,6 +4696,19 @@
             "minimum": 1.0,
             "title": "Max Session Hours",
             "type": "integer"
+          },
+          "payment_qr": {
+            "anyOf": [
+              {
+                "maxLength": 512,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "строка статичного QR банка (UzQR) — печатается на «Счёте к оплате»",
+            "title": "Payment Qr"
           },
           "reentry_window_minutes": {
             "default": 5,
@@ -6881,6 +6912,44 @@
           "plans"
         ],
         "title": "SubscriptionOut",
+        "type": "object"
+      },
+      "SubscriptionReceiptOut": {
+        "properties": {
+          "amount_minor": {
+            "title": "Amount Minor",
+            "type": "integer"
+          },
+          "printed": {
+            "title": "Printed",
+            "type": "boolean"
+          },
+          "receipt_no": {
+            "title": "Receipt No",
+            "type": "string"
+          }
+        },
+        "required": [
+          "printed",
+          "receipt_no",
+          "amount_minor"
+        ],
+        "title": "SubscriptionReceiptOut",
+        "type": "object"
+      },
+      "SubscriptionReceiptRequest": {
+        "properties": {
+          "lot_id": {
+            "description": "площадка, где продан абонемент (номер чека — по площадке)",
+            "format": "uuid",
+            "title": "Lot Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "lot_id"
+        ],
+        "title": "SubscriptionReceiptRequest",
         "type": "object"
       },
       "TenantOut": {
@@ -12860,6 +12929,58 @@
         ]
       }
     },
+    "/api/v1/sessions/{session_id}/bill": {
+      "post": {
+        "description": "«Счёт к оплате» до оплаты (машина у выезда): номер машины крупно, въезд, сколько стоит, сумма. Номера чека нет —\nон выдаётся чеку оплаты. 422 NOTHING_TO_PAY — платить нечего (сессия закрыта).",
+        "operationId": "print_bill_api_v1_sessions__session_id__bill_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Session Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReceiptOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Print Bill",
+        "tags": [
+          "payments"
+        ],
+        "x-permission": [
+          "payment:read"
+        ]
+      }
+    },
     "/api/v1/sessions/{session_id}/close": {
       "post": {
         "operationId": "close_session_api_v1_sessions__session_id__close_post",
@@ -14065,7 +14186,69 @@
           "access"
         ],
         "x-permission": [
-          "access:write"
+          "passes:sell"
+        ]
+      }
+    },
+    "/api/v1/subscriptions/{subscription_id}/receipt": {
+      "post": {
+        "description": "Чек месячного абонемента: номер машины крупно, срок, сумма, сквозной номер чека (повторная печать — тот же).",
+        "operationId": "print_subscription_receipt_api_v1_subscriptions__subscription_id__receipt_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "subscription_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Subscription Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubscriptionReceiptRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubscriptionReceiptOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Print Subscription Receipt",
+        "tags": [
+          "access"
+        ],
+        "x-permission": [
+          "passes:sell"
         ]
       }
     },

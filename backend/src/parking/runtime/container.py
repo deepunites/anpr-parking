@@ -42,6 +42,7 @@ from parking.modules.billing.application.webhooks import WebhookService
 from parking.modules.billing.infrastructure.escpos import EscPosNetworkPrinter, NoPrinter
 from parking.modules.billing.infrastructure.gateways import HttpGatewayRegistry
 from parking.modules.billing.infrastructure.obligations import SqlPaymentObligations
+from parking.modules.billing.infrastructure.receipts import SqlReceiptNumbers
 from parking.modules.billing.infrastructure.repositories import (
     SqlAttemptRepository,
     SqlPaymentRepository,
@@ -596,6 +597,14 @@ def build_container(settings: Settings, database: Database, *, clock: Clock | No
     )
     lot_service = LotService(uow_factory=uow_factory, repos=tenancy_repos, gate=subscriptions)
     cashier = CashierService(uow_factory=uow_factory, repos=billing_repos, parking=parking, clock=clock)
+    access_admin = AccessAdminService(
+        uow_factory=uow_factory,
+        repos=access_repos,
+        crypto=plate_crypto,
+        cache=decision_cache,
+        local=local_cache,
+        clock=clock,
+    )
     return Container(
         settings=settings,
         database=database,
@@ -619,14 +628,7 @@ def build_container(settings: Settings, database: Database, *, clock: Clock | No
         tariffs=TariffAdminService(uow_factory=uow_factory, repos=tariff_repos),
         redis=redis,
         access_resolver=access_resolver,
-        access=AccessAdminService(
-            uow_factory=uow_factory,
-            repos=access_repos,
-            crypto=plate_crypto,
-            cache=decision_cache,
-            local=local_cache,
-            clock=clock,
-        ),
+        access=access_admin,
         parking=parking,
         barrier_executor=BarrierCommandExecutor(
             uow_factory=uow_factory,
@@ -703,6 +705,11 @@ def build_container(settings: Settings, database: Database, *, clock: Clock | No
             payment_lookup=cashier.get_payment,
             session_lookup=parking.get_session,
             lot_lookup=lot_service.get,
+            numbers=SqlReceiptNumbers(uow_factory),
+            session_payments=cashier.session_payments,
+            quote=cashier.quote,
+            clock=clock,
+            subscription_lookup=access_admin.subscription,
         ),
         refunds=RefundService(uow_factory=uow_factory, repos=billing_repos, gateways=gateways, clock=clock),
         online_payments=OnlinePaymentService(

@@ -16,7 +16,8 @@ LotCache = TtlCache[tuple[UUID, UUID], LotInfo]
 _COLUMNS = """
     id, tenant_id, code, name, address, capacity, timezone, active, max_session_hours, reentry_window_minutes,
     unknown_exit_policy::text AS unknown_exit_policy, deny_entry_when_full, exit_grace_minutes, exit_inferred_after_minutes,
-    late_event_window_hours, barrier_cidr_allowlist::text[] AS barrier_cidr_allowlist, show_full_plates
+    late_event_window_hours, barrier_cidr_allowlist::text[] AS barrier_cidr_allowlist, show_full_plates,
+    exit_min_stay_seconds, payment_qr
 """
 
 
@@ -31,6 +32,8 @@ def _policies(row: Any) -> LotPolicies:
         late_event_window_hours=row.late_event_window_hours,
         barrier_cidr_allowlist=tuple(row.barrier_cidr_allowlist or ()),
         show_full_plates=row.show_full_plates,
+        exit_min_stay_seconds=row.exit_min_stay_seconds,
+        payment_qr=row.payment_qr,
     )
 
 
@@ -80,11 +83,12 @@ class SqlLotRepository:
                 """
                 INSERT INTO parking_lot (id, tenant_id, code, name, address, capacity, timezone, active, max_session_hours,
                     reentry_window_minutes, unknown_exit_policy, deny_entry_when_full, exit_grace_minutes,
-                    exit_inferred_after_minutes, late_event_window_hours, barrier_cidr_allowlist, show_full_plates)
+                    exit_inferred_after_minutes, late_event_window_hours, barrier_cidr_allowlist, show_full_plates,
+                    exit_min_stay_seconds, payment_qr)
                 VALUES (:id, :tenant_id, :code, :name, :address, :capacity, :timezone, :active, :max_session_hours,
                     :reentry_window_minutes, CAST(:unknown_exit_policy AS unknown_exit_policy), :deny_entry_when_full,
                     :exit_grace_minutes, :exit_inferred_after_minutes, :late_event_window_hours, CAST(:allowlist AS cidr[]),
-                    :show_full_plates)
+                    :show_full_plates, :exit_min_stay_seconds, :payment_qr)
                 """
             ),
             _params(lot),
@@ -100,7 +104,8 @@ class SqlLotRepository:
                     unknown_exit_policy = CAST(:unknown_exit_policy AS unknown_exit_policy), deny_entry_when_full = :deny_entry_when_full,
                     exit_grace_minutes = :exit_grace_minutes, exit_inferred_after_minutes = :exit_inferred_after_minutes,
                     late_event_window_hours = :late_event_window_hours, barrier_cidr_allowlist = CAST(:allowlist AS cidr[]),
-                    show_full_plates = :show_full_plates
+                    show_full_plates = :show_full_plates, exit_min_stay_seconds = :exit_min_stay_seconds,
+                    payment_qr = :payment_qr
                 WHERE id = :id
                 """
             ),
@@ -186,4 +191,6 @@ def _params(lot: ParkingLot) -> dict[str, Any]:
         "late_event_window_hours": p.late_event_window_hours,
         "allowlist": list(p.barrier_cidr_allowlist),
         "show_full_plates": p.show_full_plates,
+        "exit_min_stay_seconds": p.exit_min_stay_seconds,
+        "payment_qr": p.payment_qr,
     }

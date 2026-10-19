@@ -29,6 +29,7 @@ class PaymentMethod(enum.StrEnum):
     VIP = "VIP"
     WHITELIST = "WHITELIST"
     GRACE = "GRACE"
+    QR = "QR"  # статичный QR банка площадки: водитель платит из машины, кассир подтверждает поступление
 
 
 class Provider(enum.StrEnum):
@@ -86,10 +87,21 @@ class Payment:
     def is_terminal(self) -> bool:
         return self.status in TERMINAL
 
-    def confirm_cash(self, *, operator_id: UUID, shift_id: UUID, now: datetime, paid_until: datetime | None) -> None:
-        """PENDING → PAID наличными: только через кассира с открытой сменой (ck_cash_has_operator_shift)."""
+    def confirm_cash(
+        self,
+        *,
+        operator_id: UUID,
+        shift_id: UUID,
+        now: datetime,
+        paid_until: datetime | None,
+        method: PaymentMethod = PaymentMethod.CASH,
+    ) -> None:
+        """PENDING → PAID у кассира с открытой сменой (ck_cash_has_operator_shift): наличными или по QR площадки —
+        его кассир подтверждает, увидев поступление; в кассу смены (expected_cash) QR не входит."""
         self._require_pending()
-        self.method = PaymentMethod.CASH
+        if method not in (PaymentMethod.CASH, PaymentMethod.QR):
+            raise ValidationError("cashier confirms only CASH or QR")
+        self.method = method
         self.operator_id = operator_id
         self.shift_id = shift_id
         self.paid_at = now

@@ -4,7 +4,7 @@ import { fmt, useTranslation } from "@/i18n";
 import { useQuery } from "@tanstack/react-query";
 import { api, unwrap } from "@/api/client";
 import { ApiError } from "@/api/errors";
-import { keys, useConfirmCash, useCorrectPlate, useMatchExit, useOpenExit, usePrepayCash, useQuote, useSession, useSessionImages, useSessionPayments, useSessionVideos, useSetSessionVehicle, useSimilarSessions, usePrintReceipt } from "@/api/hooks";
+import { keys, useConfirmCash, useCorrectPlate, useMatchExit, useOpenExit, usePrepayCash, useQuote, useSession, useSessionImages, useSessionPayments, useSessionVideos, useSetSessionVehicle, useSimilarSessions, usePrintBill, usePrintReceipt } from "@/api/hooks";
 import { PlateInput, isPlateValid } from "@/components/vehicle/PlateInput";
 import { VehicleFields } from "@/components/vehicle/VehicleFields";
 import { colorSwatch, vehicleLabel, type VehicleValue } from "@/components/vehicle/vehicle";
@@ -191,12 +191,13 @@ export function SessionPanel({ sessionId, timeZone, onClose, onOpenSession, hotk
   const confirmCash = useConfirmCash(sessionId);
   const prepay = usePrepayCash(sessionId);
   const printReceipt = usePrintReceipt();
+  const printBill = usePrintBill(sessionId);
   // чек — отдельной кнопкой «Печать чека» (MediaPark: кому нужен — тому и печатаем); выключен принтер — предупреждение
   const { mutate: sendReceipt } = printReceipt;
   const print = useCallback(
     (paymentId: string, explicit = false) =>
       sendReceipt(paymentId, {
-        onSuccess: () => toast.ok(t("session.receiptPrinted")),
+        onSuccess: (r) => toast.ok(fmt(t("session.receiptPrinted"), { n: r.receipt_no })),
         onError: (e) => {
           if (explicit || (e instanceof ApiError ? e.code : "") !== "PRINTER_NOT_CONFIGURED") toast.warn(t("session.receiptFailed"));
         },
@@ -206,6 +207,7 @@ export function SessionPanel({ sessionId, timeZone, onClose, onOpenSession, hotk
   const onPaid = useCallback(() => toast.ok(t("session.confirmed")), [t]);
   const [correcting, setCorrecting] = useState(false);
   const [opening, setOpening] = useState(false);
+  const [byQr, setByQr] = useState(false);
   const [newPlate, setNewPlate] = useState("");
   const [given, setGiven] = useState<number | null>(null); // внесено наличными — только для подсказки сдачи, на сервер не уходит
   const plateInput = useRef<HTMLInputElement>(null);
@@ -274,39 +276,7 @@ export function SessionPanel({ sessionId, timeZone, onClose, onOpenSession, hotk
       )}
       {review && s.review_reason === "EXIT_UNKNOWN_SESSION" && <SimilarCars sessionId={s.id} timeZone={timeZone} canMatch={canWrite && canOpen} onMatched={onOpenSession} />}
 
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-        <Photos sessionId={s.id} />
-        <div className="grid content-start grid-cols-2 gap-2">
-          <Fact label={t("session.entry")} value={formatClock(s.entry_time, timeZone, now)} testId="fact-entry" />
-          <Fact label={s.exit_time ? t("session.stayed") : t("session.parked")} value={formatDuration(stayMinutes(s.entry_time, s.exit_time, now))} testId="fact-stay" />
-          <Fact label={t("session.exitTime")} value={s.exit_time ? formatClock(s.exit_time, timeZone, now) : saga.data ? t(`saga.${saga.data.state}`, { defaultValue: saga.data.state }) : "—"} />
-          <Fact label={t("session.access")} value={s.entry_access_kind ? t(`access.${s.entry_access_kind}`, { defaultValue: s.entry_access_kind }) : "—"} />
-        </div>
-      </div>
-
-      <SessionVideos sessionId={s.id} timeZone={timeZone} />
-
-      {/* Платежи: сумма только с бэкенда, оператор её не редактирует */}
-      <div>
-        <Eyebrow className="mb-1">{t("session.payments")}</Eyebrow>
-        {payments.isError && <ErrorBox error={payments.error} />}
-        {(payments.data ?? []).length === 0 && <p className="text-[12.5px] font-semibold text-muted">{t("session.noPayments")}</p>}
-        <ul className="space-y-1">
-          {(payments.data ?? []).map((p) => (
-            <li key={p.id} className="flex items-center gap-2 text-[13.5px]" data-testid="payment-row" data-status={p.status}>
-              <Badge tone={toneFor(p.status)}>{t(`status.${p.status}`, { defaultValue: p.status })}</Badge>
-              <Money formatted={p.amount.formatted} size="sm" />
-              <span className="font-semibold text-muted">{p.method ?? ""}</span>
-              {p.status === "PAID" && (
-                <Button variant="ghost" size="sm" className="ml-auto" disabled={printReceipt.isPending} onClick={() => print(p.id, true)} data-testid="print-receipt">
-                  <Printer className="h-4 w-4" aria-hidden="true" /> {t("session.printReceipt")}
-                </Button>
-              )}
-            </li>
-          ))}
-        </ul>
-      </div>
-
+      {/* Сверху — сумма и кнопки: при полной парковке кассир не листает карточку вниз (MediaPark, 2026-10-19) */}
       {canCash && pending && (
         <div className="flex flex-wrap items-center gap-4 rounded-[14px] border border-ok/40 bg-ok-soft px-4 py-3">
           <div>
@@ -345,8 +315,8 @@ export function SessionPanel({ sessionId, timeZone, onClose, onOpenSession, hotk
         </div>
       )}
 
-      {/* Деньги — отдельной строкой на всю ширину (сумма не обрезается), ниже — открыть выезд и исправить номер */}
-      <div className="mt-auto flex flex-col gap-2">
+      {/* Деньги — отдельной строкой на всю ширину (сумма не обрезается), под ней — чек, открыть выезд, исправить номер */}
+      <div className="flex flex-col gap-2">
         {canCash && pending ? (
           <Button variant="money" size="lg" className="w-full" disabled={confirmCash.isPending} onClick={() => confirmCash.mutate({ paymentId: pending.id, amountMinor: pending.amount_minor }, { onSuccess: onPaid })} data-testid="confirm-cash">
             {t("session.payCash")} · {pending.amount.formatted}
@@ -356,6 +326,12 @@ export function SessionPanel({ sessionId, timeZone, onClose, onOpenSession, hotk
             {t("session.prepay")} · {quote.data.amount.formatted}
           </Button>
         ) : null}
+        {/* водитель оплатил по QR площадки из машины — кассир сверяет поступление в приложении банка */}
+        {canCash && (pending || (quote.data && isActive)) && (
+          <Button variant="outline" size="lg" className="w-full" onClick={() => setByQr(true)} data-testid="paid-by-qr">
+            {t("session.paidByQr")}
+          </Button>
+        )}
         <div className="grid grid-cols-2 gap-2 [&>button]:whitespace-normal [&>button]:leading-tight">
           {canOpen && isActive && (
             <Button variant="default" size="lg" onClick={() => setOpening(true)} data-testid="open-exit">
@@ -367,12 +343,61 @@ export function SessionPanel({ sessionId, timeZone, onClose, onOpenSession, hotk
               {t("session.correct")}
             </Button>
           )}
-          {paidPayment && (
+          {paidPayment ? (
             <Button variant="outline" size="lg" disabled={printReceipt.isPending} onClick={() => print(paidPayment.id, true)} data-testid="print-receipt-main">
               <Printer className="h-4 w-4" aria-hidden="true" /> {t("session.printReceipt")}
             </Button>
-          )}
+          ) : (pending || (quote.data && isActive)) ? (
+            <Button
+              variant="outline"
+              size="lg"
+              disabled={printBill.isPending}
+              onClick={() =>
+                printBill.mutate(undefined, {
+                  onSuccess: () => toast.ok(t("session.billPrinted")),
+                  onError: () => toast.warn(t("session.receiptFailed")),
+                })
+              }
+              data-testid="print-bill"
+            >
+              <Printer className="h-4 w-4" aria-hidden="true" /> {t("session.printReceipt")}
+            </Button>
+          ) : null}
         </div>
+      </div>
+
+
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+        <Photos sessionId={s.id} />
+        <div className="grid content-start grid-cols-2 gap-2">
+          <Fact label={t("session.entry")} value={formatClock(s.entry_time, timeZone, now)} testId="fact-entry" />
+          <Fact label={s.exit_time ? t("session.stayed") : t("session.parked")} value={formatDuration(stayMinutes(s.entry_time, s.exit_time, now))} testId="fact-stay" />
+          <Fact label={t("session.exitTime")} value={s.exit_time ? formatClock(s.exit_time, timeZone, now) : saga.data ? t(`saga.${saga.data.state}`, { defaultValue: saga.data.state }) : "—"} />
+          <Fact label={t("session.access")} value={s.entry_access_kind ? t(`access.${s.entry_access_kind}`, { defaultValue: s.entry_access_kind }) : "—"} />
+        </div>
+      </div>
+
+      <SessionVideos sessionId={s.id} timeZone={timeZone} />
+
+      {/* Платежи: сумма только с бэкенда, оператор её не редактирует */}
+      <div>
+        <Eyebrow className="mb-1">{t("session.payments")}</Eyebrow>
+        {payments.isError && <ErrorBox error={payments.error} />}
+        {(payments.data ?? []).length === 0 && <p className="text-[12.5px] font-semibold text-muted">{t("session.noPayments")}</p>}
+        <ul className="space-y-1">
+          {(payments.data ?? []).map((p) => (
+            <li key={p.id} className="flex items-center gap-2 text-[13.5px]" data-testid="payment-row" data-status={p.status}>
+              <Badge tone={toneFor(p.status)}>{t(`status.${p.status}`, { defaultValue: p.status })}</Badge>
+              <Money formatted={p.amount.formatted} size="sm" />
+              <span className="font-semibold text-muted">{p.method ?? ""}</span>
+              {p.status === "PAID" && (
+                <Button variant="ghost" size="sm" className="ml-auto" disabled={printReceipt.isPending} onClick={() => print(p.id, true)} data-testid="print-receipt">
+                  <Printer className="h-4 w-4" aria-hidden="true" /> {t("session.printReceipt")}
+                </Button>
+              )}
+            </li>
+          ))}
+        </ul>
       </div>
 
       <Dialog open={correcting} onClose={() => setCorrecting(false)} title={t("session.correctTitle")} initialFocus={plateInput}>
@@ -405,6 +430,32 @@ export function SessionPanel({ sessionId, timeZone, onClose, onOpenSession, hotk
           </div>
           <ErrorBox error={correct.error} />
         </ReasonForm>
+      </Dialog>
+
+      <Dialog open={byQr} onClose={() => setByQr(false)} title={t("session.paidByQrTitle")}>
+        <p className="mb-3 text-[14px] font-semibold text-ink-2">{t("session.paidByQrHint")}</p>
+        <div className="mb-4">
+          <Money formatted={(pending?.amount ?? quote.data?.amount)?.formatted ?? ""} size="xl" tone="ok" />
+        </div>
+        <ErrorBox error={confirmCash.error ?? prepay.error} />
+        <Button
+          size="lg"
+          className="w-full"
+          disabled={confirmCash.isPending || prepay.isPending}
+          onClick={() => {
+            const done = {
+              onSuccess: () => {
+                setByQr(false);
+                onPaid();
+              },
+            };
+            if (pending) confirmCash.mutate({ paymentId: pending.id, amountMinor: pending.amount_minor, method: "QR" }, done);
+            else if (quote.data) prepay.mutate({ amount_minor: quote.data.amount_minor, method: "QR" }, done);
+          }}
+          data-testid="paid-by-qr-confirm"
+        >
+          {t("session.paidByQrConfirm")}
+        </Button>
       </Dialog>
 
       <Dialog open={opening} onClose={() => setOpening(false)} title={t("session.openExitTitle")}>

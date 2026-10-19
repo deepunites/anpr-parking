@@ -26,6 +26,15 @@ class PoliciesModel(BaseModel):
     late_event_window_hours: int = Field(default=24, ge=1, le=168)
     barrier_cidr_allowlist: list[str] = Field(default_factory=list)
     show_full_plates: bool = False  # сотрудникам — номер целиком, а не маской 01A***AA
+    payment_qr: str | None = Field(
+        default=None, max_length=512, description="строка статичного QR банка (UzQR) — печатается на «Счёте к оплате»"
+    )
+    exit_min_stay_seconds: int = Field(
+        default=0,
+        ge=0,
+        le=600,
+        description="выезд раньше — эхо въезда (камера выезда видит въезжающую машину), 0 — выкл.",
+    )
 
     def to_domain(self) -> LotPolicies:
         return LotPolicies(
@@ -38,6 +47,8 @@ class PoliciesModel(BaseModel):
             late_event_window_hours=self.late_event_window_hours,
             barrier_cidr_allowlist=tuple(self.barrier_cidr_allowlist),
             show_full_plates=self.show_full_plates,
+            exit_min_stay_seconds=self.exit_min_stay_seconds,
+            payment_qr=(self.payment_qr or "").strip() or None,
         )
 
     @classmethod
@@ -52,6 +63,8 @@ class PoliciesModel(BaseModel):
             late_event_window_hours=p.late_event_window_hours,
             barrier_cidr_allowlist=list(p.barrier_cidr_allowlist),
             show_full_plates=p.show_full_plates,
+            exit_min_stay_seconds=p.exit_min_stay_seconds,
+            payment_qr=p.payment_qr,
         )
 
 

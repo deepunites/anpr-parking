@@ -5,7 +5,7 @@
 from __future__ import annotations
 
 import json
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -14,6 +14,7 @@ import asyncpg
 import httpx
 import pytest
 
+from parking.modules.access.application.admin_service import CreateSubscriptionCommand
 from parking.modules.identity.application.contracts import CurrentUser, Role
 from parking.runtime.container import Container
 from tests.conftest import BARRIER_A1_IN, CAM_A1_IN, LOT_A1, TENANT_A, USER_A_ADMIN
@@ -33,6 +34,8 @@ SKIP_PATHS = {
     "/api/v1/camera/vendor/hikvision/{camera_key}",  # ключ камеры в пути: клиент определяется самим ключом
     "/api/v1/camera/vendor/dahua/{camera_key}",  # публичный тестовый приёмник вебхуков: клиент определяется самим токеном
     "/api/v1/platform/tenants/{tenant_id}",  # владелец платформы адресует клиента явно (tenants:manage), не ресурс клиента
+    "/api/v1/video/clips/{token}",  # подписанная ссылка на ролик: клиент определяется самой подписью (чужая — 401)
+    "/api/v1/media/images/{token}",  # подписанная ссылка на фото: так же
 }
 # доменная валидация тела идёт раньше поиска ресурса: тело должно быть осмысленным, иначе 422 маскирует проверку
 BODY_OVERRIDES: dict[str, dict[str, Any]] = {
@@ -44,6 +47,7 @@ BODY_OVERRIDES: dict[str, dict[str, Any]] = {
     "CheckoutRequest": {"provider": "PAYME"},
     "ResolveRequest": {"status": "RESOLVED"},
     "CreatePlanRequest": {"code": "PROBE1"},
+    "CloseStaleRequest": {"dry_run": True},  # только подсчёт: до площадки чужого клиента доходит без причины
     "PublishVersionRequest": {
         "rules": {
             "grace_minutes": 0,
@@ -67,6 +71,19 @@ async def resource_ids(
 ) -> dict[str, str]:
     """Один живой ресурс tenant A на каждый path-параметр OpenAPI."""
     headers = await bearer(client, users[Role.TENANT_ADMIN])
+    now = datetime.now(tz=UTC)
+    sold = await container.access.create_subscription(
+        ADMIN,
+        CreateSubscriptionCommand(
+            plate=unique_plate("01"),
+            lot_id=LOT_A1,
+            plan_code="M1",
+            starts_at=now,
+            ends_at=now + timedelta(days=30),
+            price_minor=1,
+        ),
+        reason="matrix",
+    )
     rule = await client.post(
         "/api/v1/access-rules",
         json={"plate": unique_plate("01"), "kind": "BLACKLIST", "reason": "matrix"},
@@ -139,6 +156,7 @@ async def resource_ids(
         "version": "1",
         "invite_id": invite.json()["invite"]["id"],
         "rule_id": rule.json()["id"],
+        "subscription_id": str(sold.source_id),
         "request_id": privacy.json()["id"],
         "barrier_id": str(BARRIER_A1_IN),
         "key_id": str(issued.key.id),

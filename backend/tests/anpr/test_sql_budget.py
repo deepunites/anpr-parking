@@ -25,7 +25,7 @@ from tests.support.camera_fixtures import ADMIN_A, event_body, send_event, uniqu
 pytestmark = pytest.mark.usefixtures("clean_streams")
 
 ENTRY_BUDGET = 11  # set_config, lock, реестр, vehicle, эхо выезда, session, barrier_command, anpr_event, реестр, outbox (+ правила)
-EXIT_BUDGET = 10  # set_config, lock, реестр, сессия, сага, предоплата, сага, anpr_event, реестр, outbox
+EXIT_BUDGET = 11  # set_config, lock, реестр, сессия, сага, предоплата, визиты за 24 ч, сага, anpr_event, реестр, outbox
 
 
 @contextmanager

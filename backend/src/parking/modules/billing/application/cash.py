@@ -155,10 +155,16 @@ class CashierService:
     # ---------- наличные ----------
 
     async def confirm_cash(
-        self, actor: CurrentUser, payment_id: UUID, *, declared_amount: int | None, reason: str | None
+        self,
+        actor: CurrentUser,
+        payment_id: UUID,
+        *,
+        declared_amount: int | None,
+        reason: str | None,
+        method: PaymentMethod = PaymentMethod.CASH,
     ) -> Payment:
-        """PENDING-обязательство саги оплачено наличными. Повтор для уже оплаченного возвращает тот же платёж
-        (двойная отправка → одно списание)."""
+        """PENDING-обязательство саги оплачено наличными или по QR площадки. Повтор для уже оплаченного возвращает
+        тот же платёж (двойная отправка → одно списание)."""
         async with self._uow_factory(actor.tenant_id) as uow:
             repos = self._repos(uow)
             payment = await repos.payments.get(payment_id, for_update=True)
@@ -175,13 +181,13 @@ class CashierService:
                     "custom amount is not allowed for an existing obligation; refund the difference instead"
                 )
             now = self._clock.now()
-            payment.confirm_cash(operator_id=actor.user_id, shift_id=shift.id, now=now, paid_until=None)
+            payment.confirm_cash(operator_id=actor.user_id, shift_id=shift.id, now=now, paid_until=None, method=method)
             await repos.payments.save(payment)
             await self._cash_attempt(repos, payment, shift.id, actor.user_id)
             await audit(
                 repos,
                 tenant_id=actor.tenant_id,
-                action="PAYMENT_CASH",
+                action=f"PAYMENT_{method.value}",
                 entity_type="payment",
                 entity_id=payment.id,
                 actor=actor,
@@ -191,12 +197,18 @@ class CashierService:
                 payload={"amount": payment.amount, "shift_id": str(shift.id), "declared_amount": declared_amount},
             )
             uow.publish(payment_confirmed(payment))
-            metrics.payment_total.labels(method="CASH", status="PAID").inc()
+            metrics.payment_total.labels(method=method.value, status="PAID").inc()
             record_paid(payment)
         return payment
 
     async def prepay(
-        self, actor: CurrentUser, session_id: UUID, *, declared_amount: int | None, reason: str | None
+        self,
+        actor: CurrentUser,
+        session_id: UUID,
+        *,
+        declared_amount: int | None,
+        reason: str | None,
+        method: PaymentMethod = PaymentMethod.CASH,
     ) -> Payment:
         """Предоплата до появления машины у выезда (A-11, SD-2b): PAID сразу, paid_until = now + exit_grace."""
         now = self._clock.now()
@@ -233,13 +245,14 @@ class CashierService:
                 shift_id=shift.id,
                 now=now,
                 paid_until=now + timedelta(minutes=quote.exit_grace_minutes),
+                method=method,
             )
             await repos.payments.add(payment)
             await self._cash_attempt(repos, payment, shift.id, actor.user_id)
             await audit(
                 repos,
                 tenant_id=actor.tenant_id,
-                action="PAYMENT_CASH_PREPAID",
+                action=f"PAYMENT_{method.value}_PREPAID",
                 entity_type="payment",
                 entity_id=payment.id,
                 actor=actor,
@@ -254,7 +267,7 @@ class CashierService:
                 },
             )
             uow.publish(payment_confirmed(payment))
-            metrics.payment_total.labels(method="CASH", status="PREPAID").inc()
+            metrics.payment_total.labels(method=method.value, status="PREPAID").inc()
             record_paid(payment)
         return payment
 
@@ -313,7 +326,7 @@ class CashierService:
                 tenant_id=payment.tenant_id,
                 payment_id=payment.id,
                 attempt_no=await repos.attempts.next_no(payment.id),
-                method=PaymentMethod.CASH,
+                method=payment.method or PaymentMethod.CASH,
                 provider=Provider.NONE,
                 request_id=uuid4(),
                 status=AttemptStatus.SUCCEEDED,

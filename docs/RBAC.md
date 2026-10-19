@@ -40,6 +40,7 @@ API-ключ внешней системы получает только пра�
 | `integrations:manage` |  |  |  |  | ✓ |  | ✓ | ✓ |  |
 | `dashboard:view` |  |  |  |  | ✓ | ✓ |  | ✓ |  |
 | `subscription:manage` |  |  |  |  | ✓ | ✓ |  | ✓ |  |
+| `passes:sell` |  |  |  |  | ✓ |  |  | ✓ |  |
 | `platform:view` |  |  |  |  |  |  |  |  | ✓ |
 
 ## Эндпоинты
@@ -135,6 +136,7 @@ API-ключ внешней системы получает только пра�
 | GET | `/api/v1/sessions/review-queue` | `sessions:read` |
 | GET | `/api/v1/sessions/search` | `sessions:read` |
 | GET | `/api/v1/sessions/{session_id}` | `sessions:read` |
+| POST | `/api/v1/sessions/{session_id}/bill` | `payment:read` |
 | POST | `/api/v1/sessions/{session_id}/close` | `sessions:write` |
 | POST | `/api/v1/sessions/{session_id}/confirm-entry` | `sessions:write`, `barrier:open` |
 | POST | `/api/v1/sessions/{session_id}/correct-plate` | `sessions:write` |
@@ -157,7 +159,8 @@ API-ключ внешней системы получает только пра�
 | POST | `/api/v1/signup/{signup_id}/verify` | публичный |
 | GET | `/api/v1/subscription` | `subscription:manage` |
 | POST | `/api/v1/subscription/plan` | `subscription:manage` |
-| POST | `/api/v1/subscriptions` | `access:write` |
+| POST | `/api/v1/subscriptions` | `passes:sell` |
+| POST | `/api/v1/subscriptions/{subscription_id}/receipt` | `passes:sell` |
 | GET | `/api/v1/tariff-plans/{plan_id}/versions` | `tariff:read` |
 | POST | `/api/v1/tariff-plans/{plan_id}/versions` | `tariff:write` |
 | POST | `/api/v1/tariff/preview` | `tariff:write` |

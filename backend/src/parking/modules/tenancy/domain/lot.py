@@ -26,6 +26,8 @@ class LotPolicies:
     late_event_window_hours: int = 24
     barrier_cidr_allowlist: tuple[str, ...] = ()
     show_full_plates: bool = False  # сотрудникам площадки — номер целиком, а не маской (решение клиента, в аудите)
+    exit_min_stay_seconds: int = 0  # выезд раньше — эхо въезда: камера выезда видит въезжающую машину (0 — выключено)
+    payment_qr: str | None = None  # строка статичного QR банка (UzQR/EMVCo) — на «Счёте к оплате»
 
     def validate(self) -> None:
         checks = [
@@ -34,7 +36,12 @@ class LotPolicies:
             (0 <= self.exit_grace_minutes <= 240, "exit_grace_minutes"),
             (1 <= self.exit_inferred_after_minutes <= 1440, "exit_inferred_after_minutes"),
             (1 <= self.late_event_window_hours <= 168, "late_event_window_hours"),
+            (0 <= self.exit_min_stay_seconds <= 600, "exit_min_stay_seconds"),
         ]
+        if self.payment_qr is not None and not (
+            0 < len(self.payment_qr) <= 512 and self.payment_qr.isascii() and self.payment_qr.isprintable()
+        ):
+            checks.append((False, "payment_qr"))
         bad = [name for ok, name in checks if not ok]
         if bad:
             raise ValidationError(f"policy out of range: {', '.join(bad)}")

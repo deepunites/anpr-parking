@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from uuid import UUID, uuid4
 
-from parking.modules.access.application.contracts import AccessRuleView
+from parking.modules.access.application.contracts import AccessRuleView, SubscriptionView
 from parking.modules.access.application.ports import AccessRuleRepository, DecisionCache, SubscriptionRepository
 from parking.modules.access.application.resolver import LocalDecisionCache
 from parking.modules.access.domain.rules import AccessKind, AccessRule
@@ -151,6 +151,24 @@ class AccessAdminService:
             uow.publish(self._changed_event(rule, "added"))
             self._schedule_invalidation(uow, actor.tenant_id, plate_hash)
         return self._view(rule, plate.value, self._clock.now())
+
+    async def subscription(self, actor: CurrentUser, subscription_id: UUID) -> SubscriptionView:
+        """Проданный абонемент — для чека: номер машины, срок, сумма."""
+        async with self._uow_factory(actor.tenant_id) as uow:
+            record = await self._repos(uow).subscriptions.get(subscription_id)
+        allowed = actor.allowed_lots()
+        if record is None or (record.lot_id is not None and allowed is not None and record.lot_id not in allowed):
+            raise NotFoundError("subscription not found")
+        plate = self._crypto.decrypt(actor.tenant_id, record.plate_encrypted, record.enc_key_version)
+        return SubscriptionView(
+            id=record.id,
+            lot_id=record.lot_id,
+            plate=plate.value,
+            plan_code=record.plan_code,
+            starts_at=record.starts_at,
+            ends_at=record.ends_at,
+            price_minor=record.price_minor,
+        )
 
     async def list_rules(
         self,

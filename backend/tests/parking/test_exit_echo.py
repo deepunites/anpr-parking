@@ -11,12 +11,17 @@ from uuid import UUID, uuid4
 import asyncpg
 
 from parking.modules.devices.application.commands import BarrierCommandExecutor
+from parking.modules.identity.application.contracts import CurrentUser, Role
 from parking.modules.parking.application.contracts import EntryStatus, ExitStatus, SagaState
+from parking.modules.tenancy.application.contracts import LotPolicies
+from parking.modules.tenancy.application.lot_service import UpdateLotCommand
 from parking.runtime.container import Container
 from parking.shared.plate import PlateNumber
-from tests.conftest import LOT_A1, TENANT_A
+from tests.conftest import LOT_A1, TENANT_A, USER_A_ADMIN
 from tests.support.fakes import FakeBarrierDriver
 from tests.support.parking_fixtures import entry_cmd, exit_cmd, subscription_decision
+
+ADMIN = CurrentUser(user_id=USER_A_ADMIN, tenant_id=TENANT_A, role=Role.TENANT_ADMIN, lot_scope=frozenset())
 
 
 def _plate() -> PlateNumber:
@@ -99,3 +104,31 @@ async def test_entry_right_after_exit_without_session_is_echo(
 
     assert echo.status is EntryStatus.ENTRY_EXIT_ECHO and echo.session_id == exited.session_id
     assert await _sessions(owner, exited.session_id) == ["MANUAL_REVIEW"]
+
+
+async def test_exit_right_after_entry_is_entry_echo(
+    container: Container, owner: asyncpg.Connection, clean_lot: None
+) -> None:
+    """Эхо въезда (MediaPark, 2026-10-19): камера выезда видит въезжающую машину сзади через секунды после камеры
+    въезда — «выезд» закрывал сессию в бесплатные минуты и открывал стрелу, машина оставалась без сессии."""
+    await container.lots.update(
+        ADMIN, LOT_A1, UpdateLotCommand(policies=LotPolicies(exit_min_stay_seconds=60)), reason="эхо въезда"
+    )
+    try:
+        pl = _plate()
+        now = datetime.now(tz=UTC) - timedelta(minutes=5)
+        entered = await container.parking.process_entry(entry_cmd(pl, at=now))
+        assert entered.session_id is not None
+
+        echo = await container.parking.start_exit(exit_cmd(pl, at=now + timedelta(seconds=8)))
+
+        assert echo.status is ExitStatus.EXIT_ENTRY_ECHO and echo.session_id == entered.session_id
+        assert echo.saga_id is None
+        assert await _sessions(owner, entered.session_id) == ["ACTIVE"]
+        assert await owner.fetchval("SELECT count(*) FROM exit_saga WHERE session_id = $1", entered.session_id) == 0
+        assert await container.occupancy.get(LOT_A1) == 1
+
+        real = await container.parking.start_exit(exit_cmd(pl, at=now + timedelta(minutes=3)))
+        assert real.status is not ExitStatus.EXIT_ENTRY_ECHO and real.saga_id is not None, "через минуту — выезд"
+    finally:
+        await container.lots.update(ADMIN, LOT_A1, UpdateLotCommand(policies=LotPolicies()), reason="cleanup")

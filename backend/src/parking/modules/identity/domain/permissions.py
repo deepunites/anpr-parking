@@ -37,6 +37,7 @@ class Permission(enum.StrEnum):
     INTEGRATIONS_MANAGE = "integrations:manage"  # v2: API-ключи, вебхуки, адаптеры, журнал событий, песочница
     DASHBOARD_VIEW = "dashboard:view"  # v2: сводка бизнеса владельца парковки
     SUBSCRIPTION_MANAGE = "subscription:manage"  # v2: тариф платформы и оплата подписки
+    PASSES_SELL = "passes:sell"  # месячный абонемент на стоянку: продажа и чек — только администратор (MediaPark)
     PLATFORM_VIEW = "platform:view"  # v2: сводка владельца платформы — только агрегаты, без данных водителей
 
 
@@ -103,7 +104,7 @@ _TENANT_ADMIN = _MANAGER | frozenset(
     }
 )
 _TENANT_ADMIN = _TENANT_ADMIN | frozenset(
-    {Permission.DASHBOARD_VIEW, Permission.SUBSCRIPTION_MANAGE, Permission.INTEGRATIONS_MANAGE}
+    {Permission.DASHBOARD_VIEW, Permission.SUBSCRIPTION_MANAGE, Permission.INTEGRATIONS_MANAGE, Permission.PASSES_SELL}
 )
 # Владелец: всё видит, сотрудниками и подпиской управляет, но стрелу не открывает и наличные не принимает —
 # у роли ровно те кнопки, за которые она отвечает (v2, матрица ролей).
