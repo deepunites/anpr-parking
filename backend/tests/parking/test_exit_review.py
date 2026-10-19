@@ -167,3 +167,26 @@ def test_plate_distance_reads_like_night_misreads() -> None:
     assert plate_distance("90O115XA", "90P115XA") == 1  # P/O — не путаница формы, одна правка
     assert plate_distance("90O102WA", "90O102WA") == 0
     assert plate_distance("90A123BC", "90D456XA") > 3  # другая машина
+
+
+async def test_forgotten_review_does_not_swallow_a_new_exit(
+    container: Container, owner: asyncpg.Connection, clean_lot: None
+) -> None:
+    """MediaPark (2026-10-19): разбор «выезда без въезда» от 17.10 ловил выезд той же (неверно прочитанной) машины
+    19.10 — ни нового разбора, ни окна у кассира. Через 30 минут старый разбор закрывается как устаревший."""
+    wrong = _plate()
+    long_ago = datetime.now(tz=UTC) - timedelta(days=2)
+    old = await container.parking.start_exit(exit_cmd(wrong, at=long_ago))
+    assert old.session_id is not None and await container.occupancy.get(LOT_A1) == 1
+
+    now = datetime.now(tz=UTC)
+    fresh = await container.parking.start_exit(exit_cmd(wrong, at=now))
+
+    assert fresh.status is ExitStatus.EXIT_WITHOUT_SESSION and fresh.session_id not in (None, old.session_id)
+    row = await owner.fetchrow(
+        "SELECT status::text AS status, closed_reason FROM parking_session WHERE id = $1", old.session_id
+    )
+    assert row is not None and row["status"] == "ORPHAN" and row["closed_reason"] == "STALE_REVIEW"
+    assert await container.occupancy.get(LOT_A1) == 1, "старый разбор место больше не занимает"
+    again = await container.parking.start_exit(exit_cmd(wrong, at=now + timedelta(seconds=40)))
+    assert again.session_id == fresh.session_id, "машина ещё у стрелы — тот же разбор"

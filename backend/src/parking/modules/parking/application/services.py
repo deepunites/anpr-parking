@@ -98,6 +98,7 @@ STALE_BATCH = 2000  # за один раз; больше — повторить 
 # closed_reason сессии — код (varchar(40), как REENTRY / MAX_SESSION_HOURS); причину сотрудника хранит аудит (I-15)
 CLOSED_MANUAL, ORPHANED_MANUAL, STALE_MANUAL = "CLOSED_MANUAL", "ORPHANED_MANUAL", "STALE_MANUAL"
 EXIT_MATCHED = "EXIT_MATCHED"  # «выезд без въезда» оказался машиной на площадке — номер прочитан с ошибкой
+STALE_REVIEW = "STALE_REVIEW"  # забытый «выезд без въезда»: та же машина снова у выезда спустя долгое время
 SIMILAR_LIMIT, SIMILAR_SCAN = 5, 3000  # кандидатов кассиру; машин на площадке, среди которых ищем
 REPEAT_WINDOW = timedelta(hours=24)  # въезды машины, после которых бесплатных минут уже нет (тариф: free_visits)
 
@@ -279,6 +280,17 @@ class ParkingService:
             # стрела открылась, а машина осталась бы на площадке без сессии (MediaPark, 2026-10-19)
             log.info("exit_entry_echo", session_id=str(session.id), seconds=int(since_entry.total_seconds()))
             return ExitResult(status=ExitStatus.EXIT_ENTRY_ECHO, session_id=session.id)
+        if session.status is SessionStatus.MANUAL_REVIEW and session.review_reason is ReviewReason.EXIT_UNKNOWN_SESSION:
+            if since_entry <= EXIT_WAIT:
+                # камера снова читает тот же ошибочный номер у стрелы: разбор уже ждёт кассира, бесплатно не выпускаем
+                return ExitResult(status=ExitStatus.EXIT_WITHOUT_SESSION, session_id=session.id)
+            # разбор забытого выезда (машина давно уехала, MediaPark: разборы 17.10 ловили выезды 19.10 — кассир не
+            # видел машину у стрелы): закрывается как устаревший, у машины — новый «выезд без въезда»
+            session.mark_orphan(STALE_REVIEW)
+            await repos.sessions.save(session)
+            self._emit_session_events(uow, session)
+            uow.after_commit(self._decrement(session.lot_id))
+            return await self._exit_without_session(uow, repos, lot, cmd)
         return await self._exit_session(uow, repos, session, cmd)
 
     async def _exit_session(
@@ -287,10 +299,8 @@ class ParkingService:
         repos: ParkingRepositories,
         session: ParkingSession,
         cmd: ExitCommand,
-        *,
-        manual: bool = False,
     ) -> ExitResult:
-        """Выезд найденной сессии: сага с тарифом. manual — кассир («Открыть выезд», «Это она»), не камера."""
+        """Выезд найденной сессии: сага с тарифом (камера, «Открыть выезд», «Это она»)."""
         active_saga = await repos.sagas.active_for_session(session.id, for_update=True)
         if active_saga is not None:  # A-09: второй EXIT присоединяется к живой саге
             active_saga.attach_event(cmd.event_id)
@@ -302,9 +312,6 @@ class ParkingService:
                 amount_minor=active_saga.amount_due,
                 saga_state=active_saga.state,
             )
-        if not manual and session.review_reason is ReviewReason.EXIT_UNKNOWN_SESSION:
-            # камера снова прочитала тот же ошибочный номер: «выезд без въезда» ждёт кассира, а не уезжает бесплатно
-            return ExitResult(status=ExitStatus.EXIT_WITHOUT_SESSION, session_id=session.id)
         if cmd.requires_review:
             session.move_to_review(ReviewReason.EXIT_LOW_CONFIDENCE)
             await repos.sessions.save(session)
@@ -912,7 +919,7 @@ class ParkingService:
             decision=await self._decide(actor.tenant_id, session.lot_id, plate, at),
             camera_id=session.entry_camera_id if unknown else None,
         )
-        result = await self._exit_session(uow, repos, session, cmd, manual=True)
+        result = await self._exit_session(uow, repos, session, cmd)
         saga = await repos.sagas.active_for_session(session.id, for_update=False)
         if saga is None or result.saga_id != saga.id:
             raise ConflictError("exit was not started: the session needs review", code="EXIT_NOT_STARTED")
@@ -985,7 +992,7 @@ class ParkingService:
             )
             if occupied:
                 uow.after_commit(self._decrement(review.lot_id))
-            result = await self._exit_session(uow, repos, target, cmd, manual=True)
+            result = await self._exit_session(uow, repos, target, cmd)
             saga = await repos.sagas.active_for_session(target.id, for_update=False)
             if saga is None or result.saga_id != saga.id:
                 raise ConflictError("exit was not started for the matched car", code="EXIT_NOT_STARTED")
