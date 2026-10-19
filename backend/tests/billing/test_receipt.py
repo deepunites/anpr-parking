@@ -54,6 +54,8 @@ def test_receipt_layout_fits_80mm_and_reads_like_a_receipt() -> None:
     assert payload.startswith(b"\x1b@\x1c.\x1bt\x11") and payload.endswith(b"\x1dVB\x00")  # PC866, отрезка
     assert b"\x1d!\x22" + "01 A 123 BC".encode("cp866") in payload, "втрое: GS ! 0x22"
     assert "Чек оплаты парковки".encode("cp866") in payload
+    seconds = "\n".join(line.text for line in receipt_lines(dataclasses.replace(data, billing_minutes=68)))
+    assert "Оплачено время" not in seconds, "стоял 1:07, оплачено 1:08 — округление секунд, строка лишняя"
     free = receipt_lines(dataclasses.replace(data, amount=Money(0), method="GRACE"))
     assert any("бесплатное время" in line.text for line in free)
     bill = "\n".join(

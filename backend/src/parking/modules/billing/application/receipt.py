@@ -115,7 +115,8 @@ def receipt_lines(r: ReceiptData) -> list[ReceiptLine]:
         ReceiptLine(_pair("Сейчас:" if r.bill else "Оплата:", at.strftime("%d.%m.%Y %H:%M"))),
         ReceiptLine(_pair("Время стоянки:", _duration(stay))),
     ]
-    if r.billing_minutes is not None and r.billing_minutes != stay and not r.bill:
+    # «Оплачено время» — только когда тариф округлил заметно (шаг 15/60 мин); 35 и 36 мин — округление секунд, путает
+    if r.billing_minutes is not None and r.billing_minutes > stay + 1 and not r.bill:
         lines.append(ReceiptLine(_pair("Оплачено время:", _duration(r.billing_minutes))))
     if r.note:
         lines.append(ReceiptLine(r.note[:WIDTH]))
