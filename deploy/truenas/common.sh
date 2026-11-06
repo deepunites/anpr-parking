@@ -58,6 +58,9 @@ compose() {
   if [ -s "$VIDEO_STREAMS" ]; then
     files+=(-f "$HERE/compose.video.yml")  # сервис записи и доступ API к ней
   fi
+  if [ -n "$(env_value PARKING_TUNNEL_TOKEN "")" ]; then
+    files+=(-f "$HERE/compose.tunnel.yml")  # вход из интернета (Cloudflare Tunnel) — только вход и «Гости клуба»
+  fi
   docker compose -p anpr-parking --env-file "$ENV_FILE" "${files[@]}" "$@"
 }
 

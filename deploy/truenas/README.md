@@ -172,7 +172,27 @@ sudo bash /mnt/tank/anpr/anpr-parking/deploy/truenas/reset-admin.sh
 
 Принтер выключен или без бумаги — оплата принимается как обычно, кассир видит «Чек не напечатан».
 
-## 12. Обновление
+## 12. Вход из интернета для партнёров (Cloudflare Tunnel)
+
+Бармен компьютерного клуба в другой сети отмечает гостей «за счёт клуба» по адресу вроде `https://parking.qwik.uz`.
+Туннель исходящий: белый IP и проброс портов на роутере не нужны, HTTPS даёт Cloudflare. **Снаружи открыты только
+вход в систему и «Гости клуба»** — касса, камеры, устройства, настройки и живая лента работают только в сети площадки
+(`http://192.168.13.20:8080`), снаружи на них — 404. Подбор пароля блокируется по настоящему адресу клиента.
+
+1. Домен должен обслуживаться в Cloudflare (DNS у Cloudflare). В кабинете: **Zero Trust → Networks → Tunnels →
+   Create a tunnel → Cloudflared**, имя `anpr-parking`, **Save**.
+2. На шаге **Install and run a connector** выбрать **Docker** и скопировать **только токен** — длинную строку после
+   `--token` (команду запускать не нужно).
+3. На сервере: `sudo nano /mnt/tank/anpr/anpr-parking/deploy/truenas/parking.env` → в конце строка
+   `PARKING_TUNNEL_TOKEN=<токен>` → сохранить (Ctrl+O, Enter, Ctrl+X) → `sudo bash …/install.sh`. Токен — пароль
+   туннеля: никому не пересылать, в чат не вставлять.
+4. В туннеле **Public Hostname → Add a public hostname**: Subdomain `parking`, Domain `qwik.uz`, Service **HTTP**,
+   URL `web:8081` → **Save**. Статус туннеля — **HEALTHY**.
+5. Проверить с телефона в мобильном интернете: `https://parking.qwik.uz` → вход бармена → «Гости клуба».
+
+Выключить: удалить строку `PARKING_TUNNEL_TOKEN` и `sudo bash …/install.sh` (или удалить туннель в кабинете).
+
+## 13. Обновление
 
 ```bash
 cd /mnt/tank/anpr/anpr-parking && sudo git pull && sudo bash deploy/truenas/install.sh

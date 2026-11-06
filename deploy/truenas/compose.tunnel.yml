@@ -1,0 +1,19 @@
+# Вход из интернета через Cloudflare Tunnel (MediaPark, 2026-11-07: бармен компьютерного клуба в другой сети).
+# Подключается скриптами (common.sh), когда в parking.env задан PARKING_TUNNEL_TOKEN: без него сервиса нет.
+# Туннель исходящий — белый IP и проброс портов на роутере не нужны. Публичный адрес (например parking.qwik.uz)
+# настраивается в кабинете Cloudflare и ведёт на web:8081 — вход, где открыты только вход в систему и «Гости клуба»
+# (frontend/nginx.conf). README, §12.
+services:
+  tunnel:
+    image: cloudflare/cloudflared:2026.10.2
+    restart: unless-stopped
+    command: ["tunnel", "--no-autoupdate", "run"]
+    environment:
+      TUNNEL_TOKEN: ${PARKING_TUNNEL_TOKEN:?PARKING_TUNNEL_TOKEN не задан в parking.env}
+    depends_on:
+      web:
+        condition: service_started
+    logging:
+      options:
+        max-size: 10m
+        max-file: "3"
