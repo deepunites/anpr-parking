@@ -173,6 +173,7 @@ class SessionView:
     vehicle_make: str | None = None
     vehicle_model: str | None = None
     vehicle_color: str | None = None
+    partner_validation_id: UUID | None = None  # гость партнёра (клуб): выезд бесплатно
 
     @classmethod
     def of(
@@ -202,6 +203,7 @@ class SessionView:
             vehicle_make=vehicle.make if vehicle else None,
             vehicle_model=vehicle.model if vehicle else None,
             vehicle_color=vehicle.color if vehicle else None,
+            partner_validation_id=s.partner_validation_id,
         )
 
 

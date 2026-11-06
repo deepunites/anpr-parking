@@ -17,11 +17,12 @@ import pytest
 from parking.modules.access.application.admin_service import CreateSubscriptionCommand
 from parking.modules.identity.application.contracts import CurrentUser, Role
 from parking.runtime.container import Container
+from parking.shared.plate import PlateNumber
 from tests.conftest import BARRIER_A1_IN, CAM_A1_IN, LOT_A1, TENANT_A, USER_A_ADMIN
-from tests.support.api_fixtures import Principal, bearer
+from tests.support.api_fixtures import Principal, bearer, ensure_user
 from tests.support.billing_fixtures import make_obligation
 from tests.support.camera_fixtures import unique_plate
-from tests.support.parking_fixtures import plate
+from tests.support.parking_fixtures import entry_cmd, plate
 
 ROOT = Path(__file__).resolve().parents[3]
 SPEC = json.loads((ROOT / "docs" / "openapi.json").read_text())
@@ -71,6 +72,21 @@ async def resource_ids(
 ) -> dict[str, str]:
     """Один живой ресурс tenant A на каждый path-параметр OpenAPI."""
     headers = await bearer(client, users[Role.TENANT_ADMIN])
+    club = await container.partners.create_partner(
+        ADMIN, lot_id=LOT_A1, name=f"Матрица {uuid4().hex[:6]}", price_per_car=1, reason="matrix"
+    )
+    bartender = await ensure_user(
+        container, TENANT_A, USER_A_ADMIN, Role.PARTNER, f"matrix.partner.{uuid4().hex[:6]}@alpha-parking.uz"
+    )
+    await container.partners.add_member(ADMIN, club.id, bartender.user_id)
+    guest = await container.parking.process_entry(
+        entry_cmd(PlateNumber.parse(unique_plate("90")), at=datetime.now(tz=UTC) - timedelta(minutes=30))
+    )
+    assert guest.session_id is not None
+    validation_id = await container.partners.validate(
+        CurrentUser(user_id=bartender.user_id, tenant_id=TENANT_A, role=Role.PARTNER, lot_scope=frozenset()),
+        guest.session_id,
+    )
     now = datetime.now(tz=UTC)
     sold = await container.access.create_subscription(
         ADMIN,
@@ -157,6 +173,8 @@ async def resource_ids(
         "invite_id": invite.json()["invite"]["id"],
         "rule_id": rule.json()["id"],
         "subscription_id": str(sold.source_id),
+        "partner_id": str(club.id),
+        "validation_id": str(validation_id),
         "request_id": privacy.json()["id"],
         "barrier_id": str(BARRIER_A1_IN),
         "key_id": str(issued.key.id),

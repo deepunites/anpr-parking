@@ -96,6 +96,7 @@ class ParkingSession:
     entry_manual: bool = False  # v2: въезд зарегистрирован оператором вручную
     review_reason: ReviewReason | None = None
     closed_reason: str | None = None
+    partner_validation_id: UUID | None = None  # отметка партнёра (клуб): выезд бесплатно, партнёр платит раз в месяц
     version: int = 1
     created_at: datetime | None = None
     events: list[DomainEvent] = field(default_factory=list)
@@ -192,6 +193,20 @@ class ParkingSession:
         self.version += 1
         self.events.append(PlateCorrected(session_id=self.id, old_vehicle_id=old, new_vehicle_id=new_vehicle_id))
         return old
+
+    def validate_by_partner(self, validation_id: UUID) -> None:
+        """Партнёр (клуб) берёт стоянку гостя на себя: машина на площадке, отметка одна."""
+        if self.status is not SessionStatus.ACTIVE:
+            raise ConflictError("only a car parked on the lot can be validated", code="NOT_PARKED")
+        if self.partner_validation_id is not None:
+            raise ConflictError("the car is already validated", code="ALREADY_VALIDATED")
+        self.partner_validation_id = validation_id
+        self.version += 1
+
+    def clear_partner_validation(self) -> None:
+        self._require_open()
+        self.partner_validation_id = None
+        self.version += 1
 
     def pull_events(self) -> list[DomainEvent]:
         events, self.events = self.events, []

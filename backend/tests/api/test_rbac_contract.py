@@ -158,6 +158,32 @@ SAMPLES: dict[tuple[str, str], dict[str, Any]] = {
         "json": {"reason": "rbac contract test"},
     },
     ("GET", "/api/v1/sessions/{session_id}/similar"): {"path": {"session_id": "{session_id}"}},
+    ("GET", "/api/v1/partner/me"): {},
+    ("GET", "/api/v1/partner/cars"): {"query": {"plate": "01A123AA"}},
+    ("POST", "/api/v1/partner/validations"): {"json": {"session_id": "{session_id}"}},
+    ("GET", "/api/v1/partner/validations"): {"query": {"month": "2026-11"}},
+    ("POST", "/api/v1/partner/validations/{validation_id}/cancel"): {
+        "path": {"validation_id": "{validation_id}"},
+        "json": {"reason": "rbac contract test"},
+    },
+    ("GET", "/api/v1/partners"): {},
+    ("POST", "/api/v1/partners"): {
+        "json": {"lot_id": str(LOT_A1), "name": "RBAC {n}", "price_per_car_minor": 0, "reason": "rbac contract test"}
+    },
+    ("PATCH", "/api/v1/partners/{partner_id}"): {
+        "path": {"partner_id": "{partner_id}"},
+        "json": {"reason": "rbac contract test"},
+    },
+    ("GET", "/api/v1/partners/{partner_id}/members"): {"path": {"partner_id": "{partner_id}"}},
+    ("POST", "/api/v1/partners/{partner_id}/members"): {
+        "path": {"partner_id": "{partner_id}"},
+        "json": {"display_name": "RBAC", "password": "correct-horse-battery-staple", "reason": "rbac contract test"},
+    },
+    ("GET", "/api/v1/partners/{partner_id}/report"): {"path": {"partner_id": "{partner_id}"}},
+    ("POST", "/api/v1/partners/{partner_id}/validations/{validation_id}/cancel"): {
+        "path": {"partner_id": "{partner_id}", "validation_id": "{validation_id}"},
+        "json": {"reason": "rbac contract test"},
+    },
     ("POST", "/api/v1/sessions/{session_id}/bill"): {"path": {"session_id": "{session_id}"}},
     ("POST", "/api/v1/sessions/{session_id}/match"): {
         "path": {"session_id": "{session_id}"},

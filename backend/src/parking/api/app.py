@@ -28,6 +28,7 @@ from parking.api.v1 import (
     layout,
     lots,
     metrics,
+    partners,
     payments,
     privacy,
     sessions,
@@ -113,6 +114,7 @@ def create_app(settings: Settings, *, database: Database | None = None) -> FastA
     app.include_router(dashboard.router)
     app.include_router(admin.router)
     app.include_router(payments.router)
+    app.include_router(partners.router)
     app.include_router(privacy.router)
     app.include_router(metrics.router)
     app.include_router(ws_router)

@@ -37,6 +37,10 @@ class Permission(enum.StrEnum):
     INTEGRATIONS_MANAGE = "integrations:manage"  # v2: API-ключи, вебхуки, адаптеры, журнал событий, песочница
     DASHBOARD_VIEW = "dashboard:view"  # v2: сводка бизнеса владельца парковки
     SUBSCRIPTION_MANAGE = "subscription:manage"  # v2: тариф платформы и оплата подписки
+    PARTNER_VALIDATE = (
+        "partner:validate"  # сотрудник партнёра (клуб): найти машину гостя по номеру и выпустить за счёт клуба
+    )
+    PARTNERS_MANAGE = "partners:manage"  # партнёры площадки, их входы, цена за машину и отчёт за месяц — администратор
     PASSES_SELL = "passes:sell"  # месячный абонемент на стоянку: продажа и чек — только администратор (MediaPark)
     PLATFORM_VIEW = "platform:view"  # v2: сводка владельца платформы — только агрегаты, без данных водителей
 
@@ -51,6 +55,7 @@ class Role(enum.StrEnum):
     OPERATOR = "OPERATOR"
     CASHIER = "CASHIER"
     VIEWER = "VIEWER"
+    PARTNER = "PARTNER"  # сотрудник партнёра площадки (бармен клуба): только отметка «выезд за счёт клуба»
 
 
 _VIEWER = frozenset({Permission.SESSIONS_READ, Permission.LOTS_READ, Permission.REPORTS_READ})
@@ -104,7 +109,13 @@ _TENANT_ADMIN = _MANAGER | frozenset(
     }
 )
 _TENANT_ADMIN = _TENANT_ADMIN | frozenset(
-    {Permission.DASHBOARD_VIEW, Permission.SUBSCRIPTION_MANAGE, Permission.INTEGRATIONS_MANAGE, Permission.PASSES_SELL}
+    {
+        Permission.DASHBOARD_VIEW,
+        Permission.SUBSCRIPTION_MANAGE,
+        Permission.INTEGRATIONS_MANAGE,
+        Permission.PASSES_SELL,
+        Permission.PARTNERS_MANAGE,
+    }
 )
 # Владелец: всё видит, сотрудниками и подпиской управляет, но стрелу не открывает и наличные не принимает —
 # у роли ровно те кнопки, за которые она отвечает (v2, матрица ролей).
@@ -145,7 +156,11 @@ _DEVELOPER = frozenset(
 _PLATFORM_ADMIN = _TENANT_ADMIN | frozenset({Permission.TENANTS_MANAGE, Permission.DLQ_REPLAY})
 _PLATFORM_OWNER = frozenset({Permission.PLATFORM_VIEW, Permission.TENANTS_MANAGE})
 
+# Бармен клуба: вводит номер гостя — машина выезжает бесплатно; ни сессий площадки, ни денег, ни сотрудников не видит
+_PARTNER = frozenset({Permission.PARTNER_VALIDATE})
+
 ROLE_PERMISSIONS: dict[Role, frozenset[Permission]] = {
+    Role.PARTNER: _PARTNER,
     Role.VIEWER: _VIEWER,
     Role.OPERATOR: _OPERATOR,
     Role.CASHIER: _CASHIER,

@@ -17,7 +17,7 @@ from parking.shared.errors import ConflictError
 _SESSION_COLUMNS = """
     s.id, s.tenant_id, s.lot_id, s.vehicle_id, s.entry_event_id, s.exit_event_id, s.entry_camera_id, s.exit_camera_id, s.entry_time, s.exit_time,
     s.billing_minutes, s.tariff_plan_version_id, s.status::text AS status, s.exit_kind::text AS exit_kind, s.entry_access_kind, s.entry_unknown,
-    s.entry_inferred, s.entry_manual, s.review_reason, s.closed_reason, s.version, s.created_at
+    s.entry_inferred, s.entry_manual, s.review_reason, s.closed_reason, s.version, s.created_at, s.partner_validation_id
 """
 OCCUPYING = "(s.status = 'ACTIVE' OR (s.status = 'MANUAL_REVIEW' AND s.review_reason LIKE 'EXIT_%'))"
 
@@ -44,6 +44,7 @@ def _session(r: Any) -> ParkingSession:
         entry_manual=r.entry_manual,
         review_reason=ReviewReason(r.review_reason) if r.review_reason else None,
         closed_reason=r.closed_reason,
+        partner_validation_id=r.partner_validation_id,
         version=r.version,
         created_at=r.created_at,
     )
@@ -198,7 +199,8 @@ class SqlSessionRepository:
                 """
                 UPDATE parking_session SET vehicle_id = :vehicle, exit_event_id = :exit_event, exit_camera_id = :exit_camera, exit_time = :exit_time,
                     billing_minutes = :billing, tariff_plan_version_id = :tpv, status = CAST(:status AS session_status),
-                    exit_kind = CAST(:exit_kind AS exit_kind), review_reason = :review, closed_reason = :closed_reason, version = :version
+                    exit_kind = CAST(:exit_kind AS exit_kind), review_reason = :review, closed_reason = :closed_reason,
+                    partner_validation_id = :partner_validation, version = :version
                 WHERE id = :id AND version = :expected
                 """
             ),
@@ -214,6 +216,7 @@ class SqlSessionRepository:
                 "exit_kind": s.exit_kind.value if s.exit_kind else None,
                 "review": s.review_reason.value if s.review_reason else None,
                 "closed_reason": s.closed_reason,
+                "partner_validation": s.partner_validation_id,
                 "version": s.version,
                 "expected": s.version - 1,
             },

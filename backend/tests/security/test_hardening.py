@@ -16,7 +16,7 @@ import pytest
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
-from parking.modules.identity.application.contracts import Role
+from parking.modules.identity.application.contracts import Permission, Role, permissions_for
 from parking.platform.db.tenant import tenant_transaction
 from parking.runtime.container import Container
 from tests.conftest import CAM_A1_IN, LOT_A1, LOT_B1, TENANT_A, TENANT_B
@@ -240,7 +240,10 @@ QUERY_ENDPOINTS = _query_endpoints()
 async def test_query_parameters_are_injection_safe(
     client: httpx.AsyncClient, users: dict[Role, Principal], path: str, param: str
 ) -> None:
-    headers = await bearer(client, users[Role.PLATFORM_ADMIN])
+    # роль, у которой есть право маршрута (бармен партнёра — только partner:validate)
+    needed = [Permission(p) for p in SPEC["paths"][path]["get"].get("x-permission", [])]
+    role = next(r for r in [Role.PLATFORM_ADMIN, *Role] if all(n in permissions_for(r) for n in needed))
+    headers = await bearer(client, users[role])
     for payload in INJECTIONS:
         resp = await client.get(path, params={param: payload}, headers=headers)
         assert resp.status_code in {200, 400, 404, 422}, (path, param, payload, resp.status_code, resp.text[:200])

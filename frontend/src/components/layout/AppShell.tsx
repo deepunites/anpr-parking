@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
 import { fmt, useTranslation } from "@/i18n";
-import { Activity, BadgeDollarSign, Building2, Cpu, CreditCard, KeyRound, LayoutDashboard, ListOrdered, LogOut, Map, Menu, ParkingSquare, Plug, Rocket, ShieldCheck, Users, Wallet, Wifi, WifiOff, X } from "lucide-react";
+import { Activity, BadgeDollarSign, Building2, Cpu, CreditCard, Handshake, KeyRound, LayoutDashboard, ListOrdered, LogOut, Map, Menu, ParkingSquare, Plug, Rocket, ShieldCheck, Users, Wallet, Wifi, WifiOff, X } from "lucide-react";
 import { useAuth } from "@/auth/useAuth";
 import { hasPermission } from "@/auth/store";
 import { useCurrentShift, useLots, useReviewQueue } from "@/api/hooks";
@@ -25,6 +25,7 @@ const GROUPS: { key: string; items: NavItem[] }[] = [
       { to: "/sessions", key: "nav.sessions", permission: "sessions:read", icon: <ListOrdered className="h-[18px] w-[18px]" aria-hidden="true" /> },
       { to: "/payments", key: "nav.payments", permission: "payment:read", icon: <BadgeDollarSign className="h-[18px] w-[18px]" aria-hidden="true" /> },
       { to: "/dashboard", key: "nav.dashboard", permission: "dashboard:view", icon: <LayoutDashboard className="h-[18px] w-[18px]" aria-hidden="true" /> },
+      { to: "/partner", key: "nav.partner", permission: "partner:validate", icon: <Handshake className="h-[18px] w-[18px]" aria-hidden="true" /> },
     ],
   },
   {
@@ -36,6 +37,7 @@ const GROUPS: { key: string; items: NavItem[] }[] = [
       { to: "/map", key: "nav.map", permission: "lots:read", icon: <Map className="h-[18px] w-[18px]" aria-hidden="true" /> },
       { to: "/users", key: "nav.users", permission: "users:read", icon: <Users className="h-[18px] w-[18px]" aria-hidden="true" /> },
       { to: "/access", key: "nav.access", permission: "access:read", icon: <ShieldCheck className="h-[18px] w-[18px]" aria-hidden="true" /> },
+      { to: "/partners", key: "nav.partners", permission: "partners:manage", icon: <Handshake className="h-[18px] w-[18px]" aria-hidden="true" /> },
       { to: "/integrations", key: "nav.integrations", permission: "integrations:manage", icon: <Plug className="h-[18px] w-[18px]" aria-hidden="true" /> },
     ],
   },

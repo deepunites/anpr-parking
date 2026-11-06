@@ -30,6 +30,7 @@ class PaymentMethod(enum.StrEnum):
     WHITELIST = "WHITELIST"
     GRACE = "GRACE"
     QR = "QR"  # статичный QR банка площадки: водитель платит из машины, кассир подтверждает поступление
+    PARTNER = "PARTNER"  # за счёт партнёра площадки (клуб): 0 сум на выезде, партнёр платит раз в месяц
 
 
 class Provider(enum.StrEnum):

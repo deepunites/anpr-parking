@@ -197,7 +197,23 @@ async def users(container: Container) -> dict[Role, Principal]:
         result[role] = await ensure_user(
             container, TENANT_A, USER_A_ADMIN, role, f"role.{role.value.lower()}@alpha-parking.uz"
         )
+    await ensure_partner_member(container, result[Role.PARTNER].user_id)
     return result
+
+
+TEST_PARTNER = "Тестовый клуб"
+
+
+async def ensure_partner_member(container: Container, user_id: UUID) -> UUID:
+    """Бармен партнёра — член партнёра площадки A1 (без членства роль PARTNER ничего не может)."""
+    admin = CurrentUser(user_id=USER_A_ADMIN, tenant_id=TENANT_A, role=Role.TENANT_ADMIN, lot_scope=frozenset())
+    partner = next((p for p in await container.partners.list_partners(admin) if p.name == TEST_PARTNER), None)
+    if partner is None:
+        partner = await container.partners.create_partner(
+            admin, lot_id=LOT_A1, name=TEST_PARTNER, price_per_car=1_000_000, reason="тестовый партнёр"
+        )
+    await container.partners.add_member(admin, partner.id, user_id)
+    return partner.id
 
 
 @pytest.fixture

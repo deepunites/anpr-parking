@@ -105,8 +105,10 @@ from parking.modules.media.infrastructure.pending import RedisPendingFrames
 from parking.modules.media.infrastructure.repositories import SqlMediaRepository
 from parking.modules.media.infrastructure.s3 import S3ObjectStore
 from parking.modules.media.infrastructure.video_archive import FileVideoArchive
+from parking.modules.parking.application.partners import PartnerService
 from parking.modules.parking.application.services import ParkingRepositories, ParkingService
 from parking.modules.parking.infrastructure.occupancy import RedisOccupancy
+from parking.modules.parking.infrastructure.partners import SqlPartnerRepository
 from parking.modules.parking.infrastructure.repositories import (
     SqlCorrectionRepository,
     SqlSagaRepository,
@@ -214,6 +216,7 @@ class Container:
     drivers: DriverRegistry
     cashier: CashierService
     receipts: ReceiptService
+    partners: PartnerService
     refunds: RefundService
     online_payments: OnlinePaymentService
     webhooks: WebhookService
@@ -385,6 +388,7 @@ def build_container(settings: Settings, database: Database, *, clock: Clock | No
             payments=SqlPaymentObligations(uow, clock),
             tariff=SqlTariffCalculator(tariff_repos(uow)),
             audit=SqlAuditWriter(uow.session),
+            partners=SqlPartnerRepository(uow.session),
         )
 
     def tariff_repos(uow: UnitOfWork) -> TariffRepositories:
@@ -700,6 +704,9 @@ def build_container(settings: Settings, database: Database, *, clock: Clock | No
         object_store=object_store,
         drivers=drivers,
         cashier=cashier,
+        partners=PartnerService(
+            uow_factory=uow_factory, repos=parking_repos, crypto=plate_crypto, clock=clock, parking=parking
+        ),
         receipts=ReceiptService(
             printer=EscPosNetworkPrinter(settings.receipt_printer) if settings.receipt_printer.strip() else NoPrinter(),
             payment_lookup=cashier.get_payment,

@@ -41,6 +41,7 @@ class SessionOut(BaseModel):
     vehicle_make: str | None = None
     vehicle_model: str | None = None
     vehicle_color: str | None = None
+    partner_validated: bool = False  # гость партнёра (клуб): выезд бесплатно, партнёр платит раз в месяц
 
     @classmethod
     def of(cls, s: SessionView) -> SessionOut:
@@ -66,6 +67,7 @@ class SessionOut(BaseModel):
             vehicle_make=s.vehicle_make,
             vehicle_model=s.vehicle_model,
             vehicle_color=s.vehicle_color,
+            partner_validated=s.partner_validation_id is not None,
         )
 
 

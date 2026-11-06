@@ -935,3 +935,93 @@ export function usePlatformDashboard(enabled: boolean) {
     refetchInterval: 60_000,
   });
 }
+
+/* ---- Партнёры площадки (MediaPark, 2026-11-06: компьютерный клуб выпускает своих гостей) ---- */
+export type PartnerOut = components["schemas"]["PartnerOut"];
+export type PartnerCarOut = components["schemas"]["PartnerCarOut"];
+export type PartnerMonthOut = components["schemas"]["PartnerMonthOut"];
+export type ValidationOut = components["schemas"]["ValidationOut"];
+
+export function usePartnerMe(enabled = true) {
+  return useQuery({ queryKey: ["partner-me"], queryFn: async () => unwrap(await api.GET("/api/v1/partner/me")), enabled, staleTime: 60_000, retry: false });
+}
+
+/** Машина гостя на площадке по номеру (или очень похожая — камера ошиблась), не больше трёх. */
+export function usePartnerCars(plate: string, enabled: boolean) {
+  return useQuery({
+    queryKey: ["partner-cars", plate],
+    queryFn: async () => unwrap(await api.GET("/api/v1/partner/cars", { params: { query: { plate } } })),
+    enabled,
+    retry: false,
+  });
+}
+
+export function usePartnerMonth(month: string) {
+  return useQuery({
+    queryKey: ["partner-month", month],
+    queryFn: async () => unwrap(await api.GET("/api/v1/partner/validations", { params: { query: { month } } })),
+    refetchInterval: 30_000,
+  });
+}
+
+export function useValidateGuest() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (sessionId: string) => unwrap(await api.POST("/api/v1/partner/validations", { body: { session_id: sessionId } })),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["partner-cars"] });
+      void qc.invalidateQueries({ queryKey: ["partner-month"] });
+    },
+  });
+}
+
+export function useCancelGuest() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, reason }: { id: string; reason: string }) => {
+      const result = await api.POST("/api/v1/partner/validations/{validation_id}/cancel", { params: { path: { validation_id: id } }, body: { reason } });
+      if (result.error) unwrap(result);
+    },
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ["partner-month"] }),
+  });
+}
+
+export function usePartners(enabled = true) {
+  return useQuery({ queryKey: ["partners"], queryFn: async () => unwrap(await api.GET("/api/v1/partners")), enabled });
+}
+
+export function useSavePartner() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (v: { id?: string; lotId: string; name: string; priceMinor: number; active?: boolean; reason: string }) =>
+      v.id
+        ? unwrap(await api.PATCH("/api/v1/partners/{partner_id}", { params: { path: { partner_id: v.id } }, body: { name: v.name, price_per_car_minor: v.priceMinor, active: v.active ?? null, reason: v.reason } }))
+        : unwrap(await api.POST("/api/v1/partners", { body: { lot_id: v.lotId, name: v.name, price_per_car_minor: v.priceMinor, reason: v.reason } })),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ["partners"] }),
+  });
+}
+
+export function usePartnerMembers(partnerId: string | null) {
+  return useQuery({
+    queryKey: ["partner-members", partnerId],
+    queryFn: async () => unwrap(await api.GET("/api/v1/partners/{partner_id}/members", { params: { path: { partner_id: partnerId! } } })),
+    enabled: partnerId !== null,
+  });
+}
+
+export function useCreatePartnerMember(partnerId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (body: { email: string | null; phone: string | null; display_name: string; password: string; reason: string }) =>
+      unwrap(await api.POST("/api/v1/partners/{partner_id}/members", { params: { path: { partner_id: partnerId } }, body })),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ["partner-members", partnerId] }),
+  });
+}
+
+export function usePartnerReport(partnerId: string | null, month: string) {
+  return useQuery({
+    queryKey: ["partner-report", partnerId, month],
+    queryFn: async () => unwrap(await api.GET("/api/v1/partners/{partner_id}/report", { params: { path: { partner_id: partnerId! }, query: { month } } })),
+    enabled: partnerId !== null,
+  });
+}

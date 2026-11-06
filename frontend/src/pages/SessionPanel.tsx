@@ -259,6 +259,7 @@ export function SessionPanel({ sessionId, timeZone, onClose, onOpenSession, hotk
           <div className="text-[12.5px] font-semibold text-muted">
             {t("session.entry")} {formatTime(s.entry_time, timeZone, i18n.language)}
             {s.entry_manual && <span className="ml-1.5 font-bold text-warn-ink">· {t("manual.badge")}</span>}
+            {s.partner_validated && <span className="ml-1.5 font-bold text-ok-ink" data-testid="partner-validated">· {t("partner.badge")}</span>}
           </div>
           <div className="font-mono text-[12px] font-semibold text-muted">{s.id.slice(0, 8)}</div>
         </div>

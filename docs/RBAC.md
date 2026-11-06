@@ -7,41 +7,43 @@ API-ключ внешней системы получает только пра�
 
 ## Роли × права
 
-| Право | VIEWER | OPERATOR | CASHIER | MANAGER | TENANT_ADMIN | OWNER | DEVELOPER | PLATFORM_ADMIN | PLATFORM_OWNER |
-|---|---|---|---|---|---|---|---|---|---|
-| `sessions:read` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |  |
-| `sessions:write` |  | ✓ | ✓ | ✓ | ✓ |  |  | ✓ |  |
-| `barrier:open` |  | ✓ | ✓ | ✓ | ✓ |  |  | ✓ |  |
-| `barrier:close` |  | ✓ | ✓ | ✓ | ✓ |  |  | ✓ |  |
-| `payment:read` |  | ✓ | ✓ | ✓ | ✓ | ✓ |  | ✓ |  |
-| `payment:create_cash` |  |  | ✓ | ✓ | ✓ |  |  | ✓ |  |
-| `payment:create_cash_custom` |  |  |  | ✓ | ✓ |  |  | ✓ |  |
-| `payment:refund` |  |  |  | ✓ | ✓ |  |  | ✓ |  |
-| `shift:manage` |  |  | ✓ | ✓ | ✓ |  |  | ✓ |  |
-| `tariff:read` |  |  |  | ✓ | ✓ | ✓ | ✓ | ✓ |  |
-| `tariff:write` |  |  |  | ✓ | ✓ |  |  | ✓ |  |
-| `access:read` |  | ✓ |  | ✓ | ✓ | ✓ | ✓ | ✓ |  |
-| `access:write` |  |  |  | ✓ | ✓ |  |  | ✓ |  |
-| `cameras:read` |  | ✓ |  | ✓ | ✓ | ✓ | ✓ | ✓ |  |
-| `cameras:write` |  |  |  |  | ✓ |  | ✓ | ✓ |  |
-| `cameras:rotate_key` |  |  |  |  | ✓ |  | ✓ | ✓ |  |
-| `barriers:read` |  | ✓ |  | ✓ | ✓ | ✓ | ✓ | ✓ |  |
-| `barriers:write` |  |  |  |  | ✓ |  | ✓ | ✓ |  |
-| `lots:read` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |  |
-| `lots:write` |  |  |  |  | ✓ |  | ✓ | ✓ |  |
-| `users:read` |  |  |  | ✓ | ✓ | ✓ |  | ✓ |  |
-| `users:write` |  |  |  |  | ✓ | ✓ |  | ✓ |  |
-| `reports:read` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |  | ✓ |  |
-| `reconciliation:manage` |  |  |  | ✓ | ✓ |  |  | ✓ |  |
-| `audit:read` |  |  |  | ✓ | ✓ | ✓ |  | ✓ |  |
-| `tenants:manage` |  |  |  |  |  |  |  | ✓ | ✓ |
-| `dlq:replay` |  |  |  |  |  |  |  | ✓ |  |
-| `privacy:manage` |  |  |  |  | ✓ |  |  | ✓ |  |
-| `integrations:manage` |  |  |  |  | ✓ |  | ✓ | ✓ |  |
-| `dashboard:view` |  |  |  |  | ✓ | ✓ |  | ✓ |  |
-| `subscription:manage` |  |  |  |  | ✓ | ✓ |  | ✓ |  |
-| `passes:sell` |  |  |  |  | ✓ |  |  | ✓ |  |
-| `platform:view` |  |  |  |  |  |  |  |  | ✓ |
+| Право | VIEWER | OPERATOR | CASHIER | MANAGER | TENANT_ADMIN | OWNER | DEVELOPER | PLATFORM_ADMIN | PLATFORM_OWNER | PARTNER |
+|---|---|---|---|---|---|---|---|---|---|---|
+| `sessions:read` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |  |  |
+| `sessions:write` |  | ✓ | ✓ | ✓ | ✓ |  |  | ✓ |  |  |
+| `barrier:open` |  | ✓ | ✓ | ✓ | ✓ |  |  | ✓ |  |  |
+| `barrier:close` |  | ✓ | ✓ | ✓ | ✓ |  |  | ✓ |  |  |
+| `payment:read` |  | ✓ | ✓ | ✓ | ✓ | ✓ |  | ✓ |  |  |
+| `payment:create_cash` |  |  | ✓ | ✓ | ✓ |  |  | ✓ |  |  |
+| `payment:create_cash_custom` |  |  |  | ✓ | ✓ |  |  | ✓ |  |  |
+| `payment:refund` |  |  |  | ✓ | ✓ |  |  | ✓ |  |  |
+| `shift:manage` |  |  | ✓ | ✓ | ✓ |  |  | ✓ |  |  |
+| `tariff:read` |  |  |  | ✓ | ✓ | ✓ | ✓ | ✓ |  |  |
+| `tariff:write` |  |  |  | ✓ | ✓ |  |  | ✓ |  |  |
+| `access:read` |  | ✓ |  | ✓ | ✓ | ✓ | ✓ | ✓ |  |  |
+| `access:write` |  |  |  | ✓ | ✓ |  |  | ✓ |  |  |
+| `cameras:read` |  | ✓ |  | ✓ | ✓ | ✓ | ✓ | ✓ |  |  |
+| `cameras:write` |  |  |  |  | ✓ |  | ✓ | ✓ |  |  |
+| `cameras:rotate_key` |  |  |  |  | ✓ |  | ✓ | ✓ |  |  |
+| `barriers:read` |  | ✓ |  | ✓ | ✓ | ✓ | ✓ | ✓ |  |  |
+| `barriers:write` |  |  |  |  | ✓ |  | ✓ | ✓ |  |  |
+| `lots:read` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |  |  |
+| `lots:write` |  |  |  |  | ✓ |  | ✓ | ✓ |  |  |
+| `users:read` |  |  |  | ✓ | ✓ | ✓ |  | ✓ |  |  |
+| `users:write` |  |  |  |  | ✓ | ✓ |  | ✓ |  |  |
+| `reports:read` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |  | ✓ |  |  |
+| `reconciliation:manage` |  |  |  | ✓ | ✓ |  |  | ✓ |  |  |
+| `audit:read` |  |  |  | ✓ | ✓ | ✓ |  | ✓ |  |  |
+| `tenants:manage` |  |  |  |  |  |  |  | ✓ | ✓ |  |
+| `dlq:replay` |  |  |  |  |  |  |  | ✓ |  |  |
+| `privacy:manage` |  |  |  |  | ✓ |  |  | ✓ |  |  |
+| `integrations:manage` |  |  |  |  | ✓ |  | ✓ | ✓ |  |  |
+| `dashboard:view` |  |  |  |  | ✓ | ✓ |  | ✓ |  |  |
+| `subscription:manage` |  |  |  |  | ✓ | ✓ |  | ✓ |  |  |
+| `partner:validate` |  |  |  |  |  |  |  |  |  | ✓ |
+| `partners:manage` |  |  |  |  | ✓ |  |  | ✓ |  |  |
+| `passes:sell` |  |  |  |  | ✓ |  |  | ✓ |  |  |
+| `platform:view` |  |  |  |  |  |  |  |  | ✓ |  |
 
 ## Эндпоинты
 
@@ -113,6 +115,18 @@ API-ключ внешней системы получает только пра�
 | GET | `/api/v1/lots/{lot_id}/tariff-plans` | `tariff:read` |
 | POST | `/api/v1/lots/{lot_id}/tariff-plans` | `tariff:write` |
 | GET | `/api/v1/media/images/{token}` | публичный |
+| GET | `/api/v1/partner/cars` | `partner:validate` |
+| GET | `/api/v1/partner/me` | `partner:validate` |
+| GET | `/api/v1/partner/validations` | `partner:validate` |
+| POST | `/api/v1/partner/validations` | `partner:validate` |
+| POST | `/api/v1/partner/validations/{validation_id}/cancel` | `partner:validate` |
+| GET | `/api/v1/partners` | `partners:manage` |
+| POST | `/api/v1/partners` | `partners:manage` |
+| PATCH | `/api/v1/partners/{partner_id}` | `partners:manage` |
+| GET | `/api/v1/partners/{partner_id}/members` | `partners:manage` |
+| POST | `/api/v1/partners/{partner_id}/members` | `partners:manage`, `users:write` |
+| GET | `/api/v1/partners/{partner_id}/report` | `partners:manage` |
+| POST | `/api/v1/partners/{partner_id}/validations/{validation_id}/cancel` | `partners:manage` |
 | POST | `/api/v1/payments/webhook/{provider}` | публичный |
 | GET | `/api/v1/payments/{payment_id}` | `payment:read` |
 | POST | `/api/v1/payments/{payment_id}/checkout` | `payment:read` |

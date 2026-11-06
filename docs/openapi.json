@@ -868,6 +868,22 @@
         "title": "CameraVendor",
         "type": "string"
       },
+      "CancelRequest": {
+        "properties": {
+          "reason": {
+            "description": "Обязательное обоснование ручного действия (I-15)",
+            "maxLength": 500,
+            "minLength": 3,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "title": "CancelRequest",
+        "type": "object"
+      },
       "CashRequest": {
         "properties": {
           "amount_minor": {
@@ -1608,6 +1624,97 @@
           "reason"
         ],
         "title": "CreateLotRequest",
+        "type": "object"
+      },
+      "CreateMemberRequest": {
+        "description": "Вход бармена партнёра: временный пароль от администратора (сменит при первом входе).",
+        "properties": {
+          "display_name": {
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Display Name",
+            "type": "string"
+          },
+          "email": {
+            "anyOf": [
+              {
+                "maxLength": 254,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          },
+          "password": {
+            "maxLength": 512,
+            "minLength": 12,
+            "title": "Password",
+            "type": "string"
+          },
+          "phone": {
+            "anyOf": [
+              {
+                "maxLength": 30,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phone"
+          },
+          "reason": {
+            "description": "Обязательное обоснование ручного действия (I-15)",
+            "maxLength": 500,
+            "minLength": 3,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "display_name",
+          "password",
+          "reason"
+        ],
+        "title": "CreateMemberRequest",
+        "type": "object"
+      },
+      "CreatePartnerRequest": {
+        "properties": {
+          "lot_id": {
+            "format": "uuid",
+            "title": "Lot Id",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "price_per_car_minor": {
+            "description": "сколько партнёр платит площадке за одну машину, тийины",
+            "minimum": 0.0,
+            "title": "Price Per Car Minor",
+            "type": "integer"
+          },
+          "reason": {
+            "description": "Обязательное обоснование ручного действия (I-15)",
+            "maxLength": 500,
+            "minLength": 3,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "lot_id",
+          "name",
+          "price_per_car_minor",
+          "reason"
+        ],
+        "title": "CreatePartnerRequest",
         "type": "object"
       },
       "CreatePlanRequest": {
@@ -3680,6 +3787,41 @@
         "title": "MeResponse",
         "type": "object"
       },
+      "MemberOut": {
+        "properties": {
+          "active": {
+            "title": "Active",
+            "type": "boolean"
+          },
+          "display_name": {
+            "title": "Display Name",
+            "type": "string"
+          },
+          "login": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Login"
+          },
+          "user_id": {
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_id",
+          "display_name",
+          "login",
+          "active"
+        ],
+        "title": "MemberOut",
+        "type": "object"
+      },
       "MoneyOut": {
         "properties": {
           "currency": {
@@ -4132,6 +4274,112 @@
           "items"
         ],
         "title": "Page[UserOut]",
+        "type": "object"
+      },
+      "PartnerCarOut": {
+        "properties": {
+          "entry_time": {
+            "format": "date-time",
+            "title": "Entry Time",
+            "type": "string"
+          },
+          "exact": {
+            "description": "номер совпал точно; иначе — похожий (камера ошиблась в букве или регионе)",
+            "title": "Exact",
+            "type": "boolean"
+          },
+          "plate": {
+            "title": "Plate",
+            "type": "string"
+          },
+          "session_id": {
+            "title": "Session Id",
+            "type": "string"
+          },
+          "validated": {
+            "description": "уже отмечена партнёром",
+            "title": "Validated",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "session_id",
+          "plate",
+          "entry_time",
+          "validated",
+          "exact"
+        ],
+        "title": "PartnerCarOut",
+        "type": "object"
+      },
+      "PartnerMonthOut": {
+        "properties": {
+          "count": {
+            "description": "машин за месяц, без отменённых отметок",
+            "title": "Count",
+            "type": "integer"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "month": {
+            "title": "Month",
+            "type": "string"
+          },
+          "partner": {
+            "$ref": "#/components/schemas/PartnerOut"
+          },
+          "total_minor": {
+            "description": "к оплате партнёром за месяц",
+            "title": "Total Minor",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "partner",
+          "month",
+          "count",
+          "total_minor",
+          "items"
+        ],
+        "title": "PartnerMonthOut",
+        "type": "object"
+      },
+      "PartnerOut": {
+        "properties": {
+          "active": {
+            "title": "Active",
+            "type": "boolean"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "lot_id": {
+            "title": "Lot Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "price_per_car_minor": {
+            "title": "Price Per Car Minor",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "lot_id",
+          "name",
+          "price_per_car_minor",
+          "active"
+        ],
+        "title": "PartnerOut",
         "type": "object"
       },
       "PaymentOut": {
@@ -5580,7 +5828,8 @@
           "MANAGER",
           "OPERATOR",
           "CASHIER",
-          "VIEWER"
+          "VIEWER",
+          "PARTNER"
         ],
         "title": "Role",
         "type": "string"
@@ -6245,6 +6494,11 @@
           "lot_id": {
             "title": "Lot Id",
             "type": "string"
+          },
+          "partner_validated": {
+            "default": false,
+            "title": "Partner Validated",
+            "type": "boolean"
           },
           "plate": {
             "anyOf": [
@@ -7358,6 +7612,58 @@
         "title": "UpdateLotRequest",
         "type": "object"
       },
+      "UpdatePartnerRequest": {
+        "properties": {
+          "active": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Active"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "price_per_car_minor": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Price Per Car Minor"
+          },
+          "reason": {
+            "description": "Обязательное обоснование ручного действия (I-15)",
+            "maxLength": 500,
+            "minLength": 3,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "title": "UpdatePartnerRequest",
+        "type": "object"
+      },
       "UpdateUserRequest": {
         "properties": {
           "active": {
@@ -7621,6 +7927,33 @@
         "title": "UserOut",
         "type": "object"
       },
+      "ValidateRequest": {
+        "properties": {
+          "session_id": {
+            "format": "uuid",
+            "title": "Session Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "session_id"
+        ],
+        "title": "ValidateRequest",
+        "type": "object"
+      },
+      "ValidatedOut": {
+        "properties": {
+          "validation_id": {
+            "title": "Validation Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "validation_id"
+        ],
+        "title": "ValidatedOut",
+        "type": "object"
+      },
       "ValidationError": {
         "properties": {
           "ctx": {
@@ -7659,6 +7992,96 @@
           "type"
         ],
         "title": "ValidationError",
+        "type": "object"
+      },
+      "ValidationOut": {
+        "properties": {
+          "cancel_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cancel Reason"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By"
+          },
+          "entry_time": {
+            "format": "date-time",
+            "title": "Entry Time",
+            "type": "string"
+          },
+          "exit_time": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exit Time"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "plate": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Plate"
+          },
+          "price_per_car_minor": {
+            "title": "Price Per Car Minor",
+            "type": "integer"
+          },
+          "session_id": {
+            "title": "Session Id",
+            "type": "string"
+          },
+          "state": {
+            "description": "PARKED — на площадке, LEFT — выехала, CANCELLED — отметка отменена",
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "session_id",
+          "plate",
+          "entry_time",
+          "exit_time",
+          "state",
+          "price_per_car_minor",
+          "created_at",
+          "created_by",
+          "cancel_reason"
+        ],
+        "title": "ValidationOut",
         "type": "object"
       },
       "VehicleAttributesRequest": {
@@ -11698,6 +12121,647 @@
           "sessions"
         ],
         "x-public": true
+      }
+    },
+    "/api/v1/partner/cars": {
+      "get": {
+        "description": "Машина гостя на площадке по номеру (или очень похожая — камера ошиблась), не больше трёх.",
+        "operationId": "find_cars_api_v1_partner_cars_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "plate",
+            "required": true,
+            "schema": {
+              "maxLength": 20,
+              "minLength": 4,
+              "title": "Plate",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/PartnerCarOut"
+                  },
+                  "title": "Response Find Cars Api V1 Partner Cars Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Find Cars",
+        "tags": [
+          "partners"
+        ],
+        "x-permission": [
+          "partner:validate"
+        ]
+      }
+    },
+    "/api/v1/partner/me": {
+      "get": {
+        "operationId": "my_partner_api_v1_partner_me_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PartnerOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "My Partner",
+        "tags": [
+          "partners"
+        ],
+        "x-permission": [
+          "partner:validate"
+        ]
+      }
+    },
+    "/api/v1/partner/validations": {
+      "get": {
+        "operationId": "my_validations_api_v1_partner_validations_get",
+        "parameters": [
+          {
+            "description": "ГГГГ-ММ; по умолчанию — текущий",
+            "in": "query",
+            "name": "month",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^\\d{4}-(0[1-9]|1[0-2])$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "ГГГГ-ММ; по умолчанию — текущий",
+              "title": "Month"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PartnerMonthOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "My Validations",
+        "tags": [
+          "partners"
+        ],
+        "x-permission": [
+          "partner:validate"
+        ]
+      },
+      "post": {
+        "description": "«Выпустить за счёт клуба»: на выезде к оплате 0 сум и стрела открывается сама.",
+        "operationId": "validate_api_v1_partner_validations_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ValidateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidatedOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Validate",
+        "tags": [
+          "partners"
+        ],
+        "x-permission": [
+          "partner:validate"
+        ]
+      }
+    },
+    "/api/v1/partner/validations/{validation_id}/cancel": {
+      "post": {
+        "description": "Отмена отметки (ошиблись машиной), пока машина не выехала.",
+        "operationId": "cancel_my_validation_api_v1_partner_validations__validation_id__cancel_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "validation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Validation Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CancelRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Cancel My Validation",
+        "tags": [
+          "partners"
+        ],
+        "x-permission": [
+          "partner:validate"
+        ]
+      }
+    },
+    "/api/v1/partners": {
+      "get": {
+        "operationId": "list_partners_api_v1_partners_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/PartnerOut"
+                  },
+                  "title": "Response List Partners Api V1 Partners Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Partners",
+        "tags": [
+          "partners"
+        ],
+        "x-permission": [
+          "partners:manage"
+        ]
+      },
+      "post": {
+        "operationId": "create_partner_api_v1_partners_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreatePartnerRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PartnerOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Partner",
+        "tags": [
+          "partners"
+        ],
+        "x-permission": [
+          "partners:manage"
+        ]
+      }
+    },
+    "/api/v1/partners/{partner_id}": {
+      "patch": {
+        "operationId": "update_partner_api_v1_partners__partner_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "partner_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Partner Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdatePartnerRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PartnerOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Update Partner",
+        "tags": [
+          "partners"
+        ],
+        "x-permission": [
+          "partners:manage"
+        ]
+      }
+    },
+    "/api/v1/partners/{partner_id}/members": {
+      "get": {
+        "operationId": "list_members_api_v1_partners__partner_id__members_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "partner_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Partner Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/MemberOut"
+                  },
+                  "title": "Response List Members Api V1 Partners  Partner Id  Members Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Members",
+        "tags": [
+          "partners"
+        ],
+        "x-permission": [
+          "partners:manage"
+        ]
+      },
+      "post": {
+        "description": "Вход бармена: пользователь с ролью PARTNER только на площадке партнёра — видит лишь поиск машины гостя.",
+        "operationId": "create_member_api_v1_partners__partner_id__members_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "partner_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Partner Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateMemberRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemberOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Member",
+        "tags": [
+          "partners"
+        ],
+        "x-permission": [
+          "partners:manage",
+          "users:write"
+        ]
+      }
+    },
+    "/api/v1/partners/{partner_id}/report": {
+      "get": {
+        "description": "Расчёт с партнёром за месяц: сколько машин отмечено и сколько он должен площадке.",
+        "operationId": "partner_report_api_v1_partners__partner_id__report_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "partner_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Partner Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "ГГГГ-ММ; по умолчанию — текущий",
+            "in": "query",
+            "name": "month",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^\\d{4}-(0[1-9]|1[0-2])$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "ГГГГ-ММ; по умолчанию — текущий",
+              "title": "Month"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PartnerMonthOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Partner Report",
+        "tags": [
+          "partners"
+        ],
+        "x-permission": [
+          "partners:manage"
+        ]
+      }
+    },
+    "/api/v1/partners/{partner_id}/validations/{validation_id}/cancel": {
+      "post": {
+        "operationId": "cancel_validation_api_v1_partners__partner_id__validations__validation_id__cancel_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "partner_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Partner Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "validation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Validation Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CancelRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Cancel Validation",
+        "tags": [
+          "partners"
+        ],
+        "x-permission": [
+          "partners:manage"
+        ]
       }
     },
     "/api/v1/payments/webhook/{provider}": {

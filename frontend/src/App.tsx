@@ -27,11 +27,15 @@ const JoinPage = lazy(() => import("@/pages/JoinPage").then((m) => ({ default: m
 const ChangePasswordPage = lazy(() => import("@/pages/ChangePasswordPage").then((m) => ({ default: m.ChangePasswordPage })));
 const MapPage = lazy(() => import("@/pages/MapPage").then((m) => ({ default: m.MapPage })));
 const PlatformPage = lazy(() => import("@/pages/PlatformPage").then((m) => ({ default: m.PlatformPage })));
+const PartnerPage = lazy(() => import("@/pages/PartnerPage").then((m) => ({ default: m.PartnerPage })));
+const PartnersPage = lazy(() => import("@/pages/PartnersPage").then((m) => ({ default: m.PartnersPage })));
 
 /** Стартовый экран по правам: операторская — «Живая парковка», владелец платформы — список клиентов. */
 function Home() {
   const me = useAuthStore((s) => s.me);
   if (!hasPermission(me, "sessions:read") && hasPermission(me, "platform:view")) return <Navigate to="/platform" replace />;
+  // бармен партнёра (клуб): у него только отметка гостей
+  if (!hasPermission(me, "sessions:read") && hasPermission(me, "partner:validate")) return <Navigate to="/partner" replace />;
   return <Navigate to="/live" replace />;
 }
 
@@ -100,6 +104,8 @@ export function App() {
           <Route path="welcome" element={<WelcomePage />} />
           <Route path="subscription" element={<SubscriptionPage />} />
           <Route path="platform" element={<PlatformPage />} />
+          <Route path="partner" element={<PartnerPage />} />
+          <Route path="partners" element={<PartnersPage />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

@@ -991,6 +991,177 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/partner/cars": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Find Cars
+         * @description Машина гостя на площадке по номеру (или очень похожая — камера ошиблась), не больше трёх.
+         */
+        get: operations["find_cars_api_v1_partner_cars_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/partner/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** My Partner */
+        get: operations["my_partner_api_v1_partner_me_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/partner/validations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** My Validations */
+        get: operations["my_validations_api_v1_partner_validations_get"];
+        put?: never;
+        /**
+         * Validate
+         * @description «Выпустить за счёт клуба»: на выезде к оплате 0 сум и стрела открывается сама.
+         */
+        post: operations["validate_api_v1_partner_validations_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/partner/validations/{validation_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel My Validation
+         * @description Отмена отметки (ошиблись машиной), пока машина не выехала.
+         */
+        post: operations["cancel_my_validation_api_v1_partner_validations__validation_id__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/partners": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Partners */
+        get: operations["list_partners_api_v1_partners_get"];
+        put?: never;
+        /** Create Partner */
+        post: operations["create_partner_api_v1_partners_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/partners/{partner_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update Partner */
+        patch: operations["update_partner_api_v1_partners__partner_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/partners/{partner_id}/members": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Members */
+        get: operations["list_members_api_v1_partners__partner_id__members_get"];
+        put?: never;
+        /**
+         * Create Member
+         * @description Вход бармена: пользователь с ролью PARTNER только на площадке партнёра — видит лишь поиск машины гостя.
+         */
+        post: operations["create_member_api_v1_partners__partner_id__members_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/partners/{partner_id}/report": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Partner Report
+         * @description Расчёт с партнёром за месяц: сколько машин отмечено и сколько он должен площадке.
+         */
+        get: operations["partner_report_api_v1_partners__partner_id__report_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/partners/{partner_id}/validations/{validation_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cancel Validation */
+        post: operations["cancel_validation_api_v1_partners__partner_id__validations__validation_id__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/payments/webhook/{provider}": {
         parameters: {
             query?: never;
@@ -2434,6 +2605,14 @@ export interface components {
          * @enum {string}
          */
         CameraVendor: "GENERIC" | "HIKVISION" | "DAHUA";
+        /** CancelRequest */
+        CancelRequest: {
+            /**
+             * Reason
+             * @description Обязательное обоснование ручного действия (I-15)
+             */
+            reason: string;
+        };
         /** CashRequest */
         CashRequest: {
             /**
@@ -2693,6 +2872,45 @@ export interface components {
              * @default Asia/Tashkent
              */
             timezone: string;
+        };
+        /**
+         * CreateMemberRequest
+         * @description Вход бармена партнёра: временный пароль от администратора (сменит при первом входе).
+         */
+        CreateMemberRequest: {
+            /** Display Name */
+            display_name: string;
+            /** Email */
+            email?: string | null;
+            /** Password */
+            password: string;
+            /** Phone */
+            phone?: string | null;
+            /**
+             * Reason
+             * @description Обязательное обоснование ручного действия (I-15)
+             */
+            reason: string;
+        };
+        /** CreatePartnerRequest */
+        CreatePartnerRequest: {
+            /**
+             * Lot Id
+             * Format: uuid
+             */
+            lot_id: string;
+            /** Name */
+            name: string;
+            /**
+             * Price Per Car Minor
+             * @description сколько партнёр платит площадке за одну машину, тийины
+             */
+            price_per_car_minor: number;
+            /**
+             * Reason
+             * @description Обязательное обоснование ручного действия (I-15)
+             */
+            reason: string;
         };
         /** CreatePlanRequest */
         CreatePlanRequest: {
@@ -3363,6 +3581,17 @@ export interface components {
             /** User Id */
             user_id: string;
         };
+        /** MemberOut */
+        MemberOut: {
+            /** Active */
+            active: boolean;
+            /** Display Name */
+            display_name: string;
+            /** Login */
+            login: string | null;
+            /** User Id */
+            user_id: string;
+        };
         /** MoneyOut */
         MoneyOut: {
             /** Currency */
@@ -3519,6 +3748,59 @@ export interface components {
             items: components["schemas"]["UserOut"][];
             /** Next Cursor */
             next_cursor?: string | null;
+        };
+        /** PartnerCarOut */
+        PartnerCarOut: {
+            /**
+             * Entry Time
+             * Format: date-time
+             */
+            entry_time: string;
+            /**
+             * Exact
+             * @description номер совпал точно; иначе — похожий (камера ошиблась в букве или регионе)
+             */
+            exact: boolean;
+            /** Plate */
+            plate: string;
+            /** Session Id */
+            session_id: string;
+            /**
+             * Validated
+             * @description уже отмечена партнёром
+             */
+            validated: boolean;
+        };
+        /** PartnerMonthOut */
+        PartnerMonthOut: {
+            /**
+             * Count
+             * @description машин за месяц, без отменённых отметок
+             */
+            count: number;
+            /** Items */
+            items: components["schemas"]["ValidationOut"][];
+            /** Month */
+            month: string;
+            partner: components["schemas"]["PartnerOut"];
+            /**
+             * Total Minor
+             * @description к оплате партнёром за месяц
+             */
+            total_minor: number;
+        };
+        /** PartnerOut */
+        PartnerOut: {
+            /** Active */
+            active: boolean;
+            /** Id */
+            id: string;
+            /** Lot Id */
+            lot_id: string;
+            /** Name */
+            name: string;
+            /** Price Per Car Minor */
+            price_per_car_minor: number;
         };
         /** PaymentOut */
         PaymentOut: {
@@ -4045,7 +4327,7 @@ export interface components {
          * Role
          * @enum {string}
          */
-        Role: "PLATFORM_OWNER" | "PLATFORM_ADMIN" | "OWNER" | "TENANT_ADMIN" | "DEVELOPER" | "MANAGER" | "OPERATOR" | "CASHIER" | "VIEWER";
+        Role: "PLATFORM_OWNER" | "PLATFORM_ADMIN" | "OWNER" | "TENANT_ADMIN" | "DEVELOPER" | "MANAGER" | "OPERATOR" | "CASHIER" | "VIEWER" | "PARTNER";
         /** RotateKeyRequest */
         RotateKeyRequest: {
             /**
@@ -4256,6 +4538,11 @@ export interface components {
             id: string;
             /** Lot Id */
             lot_id: string;
+            /**
+             * Partner Validated
+             * @default false
+             */
+            partner_validated: boolean;
             /** Plate */
             plate: string | null;
             /** Review Reason */
@@ -4607,6 +4894,20 @@ export interface components {
              */
             reason: string;
         };
+        /** UpdatePartnerRequest */
+        UpdatePartnerRequest: {
+            /** Active */
+            active?: boolean | null;
+            /** Name */
+            name?: string | null;
+            /** Price Per Car Minor */
+            price_per_car_minor?: number | null;
+            /**
+             * Reason
+             * @description Обязательное обоснование ручного действия (I-15)
+             */
+            reason: string;
+        };
         /** UpdateUserRequest */
         UpdateUserRequest: {
             /** Active */
@@ -4680,6 +4981,19 @@ export interface components {
             phone?: string | null;
             role: components["schemas"]["Role"];
         };
+        /** ValidateRequest */
+        ValidateRequest: {
+            /**
+             * Session Id
+             * Format: uuid
+             */
+            session_id: string;
+        };
+        /** ValidatedOut */
+        ValidatedOut: {
+            /** Validation Id */
+            validation_id: string;
+        };
         /** ValidationError */
         ValidationError: {
             /** Context */
@@ -4692,6 +5006,38 @@ export interface components {
             msg: string;
             /** Error Type */
             type: string;
+        };
+        /** ValidationOut */
+        ValidationOut: {
+            /** Cancel Reason */
+            cancel_reason: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Created By */
+            created_by: string | null;
+            /**
+             * Entry Time
+             * Format: date-time
+             */
+            entry_time: string;
+            /** Exit Time */
+            exit_time: string | null;
+            /** Id */
+            id: string;
+            /** Plate */
+            plate: string | null;
+            /** Price Per Car Minor */
+            price_per_car_minor: number;
+            /** Session Id */
+            session_id: string;
+            /**
+             * State
+             * @description PARKED — на площадке, LEFT — выехала, CANCELLED — отметка отменена
+             */
+            state: string;
         };
         /** VehicleAttributesRequest */
         VehicleAttributesRequest: {
@@ -6946,6 +7292,377 @@ export interface operations {
                 content: {
                     "image/jpeg": unknown;
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    find_cars_api_v1_partner_cars_get: {
+        parameters: {
+            query: {
+                plate: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PartnerCarOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    my_partner_api_v1_partner_me_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PartnerOut"];
+                };
+            };
+        };
+    };
+    my_validations_api_v1_partner_validations_get: {
+        parameters: {
+            query?: {
+                /** @description ГГГГ-ММ; по умолчанию — текущий */
+                month?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PartnerMonthOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    validate_api_v1_partner_validations_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ValidateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidatedOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancel_my_validation_api_v1_partner_validations__validation_id__cancel_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                validation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CancelRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_partners_api_v1_partners_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PartnerOut"][];
+                };
+            };
+        };
+    };
+    create_partner_api_v1_partners_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreatePartnerRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PartnerOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_partner_api_v1_partners__partner_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                partner_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdatePartnerRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PartnerOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_members_api_v1_partners__partner_id__members_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                partner_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemberOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_member_api_v1_partners__partner_id__members_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                partner_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateMemberRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemberOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    partner_report_api_v1_partners__partner_id__report_get: {
+        parameters: {
+            query?: {
+                /** @description ГГГГ-ММ; по умолчанию — текущий */
+                month?: string | null;
+            };
+            header?: never;
+            path: {
+                partner_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PartnerMonthOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancel_validation_api_v1_partners__partner_id__validations__validation_id__cancel_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                partner_id: string;
+                validation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CancelRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

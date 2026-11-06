@@ -54,6 +54,7 @@ class PrivilegeMethod(enum.StrEnum):
     VIP = "VIP"
     WHITELIST = "WHITELIST"
     GRACE = "GRACE"
+    PARTNER = "PARTNER"  # стоянку гостя оплачивает партнёр (клуб) — раз в месяц по числу машин
 
 
 @dataclass(frozen=True, slots=True)

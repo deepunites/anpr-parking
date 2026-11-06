@@ -36,6 +36,7 @@ from parking.modules.parking.application.contracts import (
 from parking.modules.parking.application.ports import (
     CorrectionRepository,
     OccupancyProjection,
+    PartnerRepository,
     SagaRepository,
     SagaScanner,
     SessionRepository,
@@ -82,6 +83,7 @@ class ParkingRepositories:
     payments: PaymentObligations
     tariff: TariffCalculator
     audit: AuditWriter
+    partners: PartnerRepository
 
 
 UowFactory = Callable[[UUID | None], UnitOfWork]
@@ -443,6 +445,16 @@ class ParkingService:
                 },
             )
             flags["prepaid"] = True
+        elif session.partner_validation_id is not None:  # гость партнёра (клуб): стоянку оплатит партнёр раз в месяц
+            amount, calculation = (
+                0,
+                {
+                    "amount": 0,
+                    "applied_rules": ["PARTNER"],
+                    "billing_minutes": ParkingSession.minutes_between(session.entry_time, cmd.event_time),
+                    "partner_validation_id": str(session.partner_validation_id),
+                },
+            )
         elif cmd.event_time <= session.entry_time:  # «выезд без въезда»: машину видели только на выезде — 0 минут
             amount, calculation = 0, {"amount": 0, "applied_rules": ["NO_STAY"], "billing_minutes": 0}
         else:
@@ -720,24 +732,35 @@ class ParkingService:
     async def _step_access_resolved(
         self, uow: UnitOfWork, repos: ParkingRepositories, saga: ExitSaga, now: datetime
     ) -> None:
-        if saga.amount_due == 0:
+        # гость партнёра: отметка при въезде (calculation) или когда машина уже у выезда (flags — расчёт неизменяем)
+        partner = saga.calculation.get("partner_validation_id") or saga.flags.get("partner_validation_id")
+        if saga.amount_due == 0 or partner:
             kind = saga.access_decision.get("kind", "NORMAL")
             method = {
                 "VIP": PrivilegeMethod.VIP,
                 "SUBSCRIPTION": PrivilegeMethod.SUBSCRIPTION,
                 "WHITELIST": PrivilegeMethod.WHITELIST,
             }.get(kind, PrivilegeMethod.GRACE)
+            snapshot = saga.calculation
+            if partner:
+                method = PrivilegeMethod.PARTNER
+                snapshot = {
+                    **saga.calculation,
+                    "amount": 0,
+                    "applied_rules": ["PARTNER"],
+                    "partner_validation_id": partner,
+                }
             if not saga.flags.get("prepaid"):
-                # источник льготы: абонемент (source_id) либо само правило VIP/whitelist (rule_id) —
+                # источник льготы: абонемент (source_id), правило VIP/whitelist (rule_id) или отметка партнёра —
                 # ck_privilege_source требует ссылку для любой нулевой льготной оплаты
-                source = saga.access_decision.get("source_id") or saga.access_decision.get("rule_id")
+                source = partner or saga.access_decision.get("source_id") or saga.access_decision.get("rule_id")
                 ref = await repos.payments.record_privilege(
                     session_id=saga.session_id,
                     lot_id=saga.lot_id,
                     saga_id=saga.id,
                     method=method,
                     source_id=UUID(source) if source else None,
-                    snapshot=saga.calculation,
+                    snapshot=snapshot,
                     idempotency_key=_key("saga", saga.id, "settle"),
                 )
                 saga.settle(ref.id, now)
@@ -1115,6 +1138,37 @@ class ParkingService:
         return await repos.sessions.recent_visits(
             session.lot_id, session.vehicle_id, since=session.entry_time - REPEAT_WINDOW, before=session.entry_time
         )
+
+    async def settle_exit_by_partner(
+        self, uow: UnitOfWork, repos: ParkingRepositories, session: ParkingSession, validation_id: UUID
+    ) -> None:
+        """Клуб отметил машину, когда она уже у выезда: к оплате — 0, обязательство отменяется, стрела открывается.
+        Выезд ещё считается — флаг в саге, шаг расчёта оформит 0 сум за счёт партнёра."""
+        saga = await repos.sagas.active_for_session(session.id, for_update=True)
+        if saga is None:
+            return
+        now = self._clock.now()
+        saga.flags["partner_validation_id"] = str(validation_id)
+        if saga.state in (SagaState.PAYMENT_REQUIRED, SagaState.PAYMENT_PENDING_VERIFICATION) and saga.payment_id:
+            if not await repos.payments.cancel_obligation(saga.payment_id, "PARTNER_VALIDATED"):
+                return  # уже оплачено водителем — отметка не меняет выезд
+            ref = await repos.payments.record_privilege(
+                session_id=saga.session_id,
+                lot_id=saga.lot_id,
+                saga_id=saga.id,
+                method=PrivilegeMethod.PARTNER,
+                source_id=validation_id,
+                snapshot={
+                    **saga.calculation,
+                    "amount": 0,
+                    "applied_rules": ["PARTNER"],
+                    "partner_validation_id": str(validation_id),
+                },
+                idempotency_key=_key("saga", saga.id, "partner"),
+            )
+            saga.settle(ref.id, now)
+            await self._step_open_barrier(uow, repos, saga, now)
+        await repos.sagas.save(saga)
 
     async def _plate(self, repos: ParkingRepositories, tenant_id: UUID, vehicle_id: UUID) -> PlateNumber:
         stored = await repos.vehicles.plate_encrypted(vehicle_id)

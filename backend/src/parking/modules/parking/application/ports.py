@@ -160,3 +160,62 @@ class OccupancyProjection(Protocol):
     async def get(self, lot_id: UUID) -> int | None: ...
     async def adjust(self, lot_id: UUID, delta: int) -> None: ...
     async def set(self, lot_id: UUID, value: int) -> None: ...
+
+
+# ---------------------------------------------------------------- партнёры площадки (клуб)
+@dataclass(frozen=True, slots=True)
+class Partner:
+    id: UUID
+    tenant_id: UUID
+    lot_id: UUID
+    name: str
+    price_per_car: int  # тийины
+    active: bool = True
+
+
+@dataclass(frozen=True, slots=True)
+class PartnerMember:
+    user_id: UUID
+    display_name: str
+    login: str | None
+    active: bool
+
+
+@dataclass(frozen=True, slots=True)
+class ValidationRecord:
+    id: UUID
+    partner_id: UUID
+    session_id: UUID
+    cancelled_at: datetime | None
+
+
+@dataclass(frozen=True, slots=True)
+class ValidationRow:
+    id: UUID
+    session_id: UUID
+    plate_encrypted: bytes
+    enc_key_version: int
+    entry_time: datetime
+    exit_time: datetime | None
+    session_status: str
+    price_per_car: int
+    created_at: datetime
+    created_by: str | None
+    cancelled_at: datetime | None
+    cancel_reason: str | None
+
+
+class PartnerRepository(Protocol):
+    async def all(self) -> list[Partner]: ...
+    async def get(self, partner_id: UUID, *, for_update: bool = False) -> Partner | None: ...
+    async def add(self, partner: Partner) -> None: ...
+    async def save(self, partner: Partner) -> None: ...
+    async def of_user(self, user_id: UUID) -> Partner | None: ...
+    async def add_member(self, tenant_id: UUID, partner_id: UUID, user_id: UUID) -> None: ...
+    async def members(self, partner_id: UUID) -> list[PartnerMember]: ...
+    async def add_validation(
+        self, *, validation_id: UUID, partner: Partner, session_id: UUID, created_by: UUID
+    ) -> None: ...
+    async def get_validation(self, validation_id: UUID, *, for_update: bool = False) -> ValidationRecord | None: ...
+    async def cancel_validation(self, validation_id: UUID, *, by: UUID, reason: str, at: datetime) -> None: ...
+    async def validations(self, partner_id: UUID, *, since: datetime, until: datetime) -> list[ValidationRow]: ...
