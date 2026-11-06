@@ -169,8 +169,9 @@ class Partner:
     tenant_id: UUID
     lot_id: UUID
     name: str
-    price_per_car: int  # тийины
+    price_per_car: int  # тийины за каждую отмеченную машину (обычно 0)
     active: bool = True
+    monthly_fee: int = 0  # тийины в месяц — фиксированная плата партнёра (MediaPark: клуб платит в месяц)
 
 
 @dataclass(frozen=True, slots=True)

@@ -1688,6 +1688,13 @@
             "title": "Lot Id",
             "type": "string"
           },
+          "monthly_fee_minor": {
+            "default": 0,
+            "description": "сколько партнёр платит площадке в месяц, тийины",
+            "minimum": 0.0,
+            "title": "Monthly Fee Minor",
+            "type": "integer"
+          },
           "name": {
             "maxLength": 100,
             "minLength": 1,
@@ -1695,7 +1702,8 @@
             "type": "string"
           },
           "price_per_car_minor": {
-            "description": "сколько партнёр платит площадке за одну машину, тийины",
+            "default": 0,
+            "description": "доплата за каждую машину (обычно 0), тийины",
             "minimum": 0.0,
             "title": "Price Per Car Minor",
             "type": "integer"
@@ -1711,7 +1719,6 @@
         "required": [
           "lot_id",
           "name",
-          "price_per_car_minor",
           "reason"
         ],
         "title": "CreatePartnerRequest",
@@ -4314,6 +4321,11 @@
       },
       "PartnerMonthOut": {
         "properties": {
+          "cars_total_minor": {
+            "description": "за машины (если задана цена за машину)",
+            "title": "Cars Total Minor",
+            "type": "integer"
+          },
           "count": {
             "description": "машин за месяц, без отменённых отметок",
             "title": "Count",
@@ -4334,7 +4346,7 @@
             "$ref": "#/components/schemas/PartnerOut"
           },
           "total_minor": {
-            "description": "к оплате партнёром за месяц",
+            "description": "к оплате партнёром за месяц: плата в месяц + за машины",
             "title": "Total Minor",
             "type": "integer"
           }
@@ -4343,6 +4355,7 @@
           "partner",
           "month",
           "count",
+          "cars_total_minor",
           "total_minor",
           "items"
         ],
@@ -4363,11 +4376,17 @@
             "title": "Lot Id",
             "type": "string"
           },
+          "monthly_fee_minor": {
+            "description": "фиксированная плата партнёра в месяц, тийины",
+            "title": "Monthly Fee Minor",
+            "type": "integer"
+          },
           "name": {
             "title": "Name",
             "type": "string"
           },
           "price_per_car_minor": {
+            "description": "доплата за каждую отмеченную машину (обычно 0), тийины",
             "title": "Price Per Car Minor",
             "type": "integer"
           }
@@ -4376,6 +4395,7 @@
           "id",
           "lot_id",
           "name",
+          "monthly_fee_minor",
           "price_per_car_minor",
           "active"
         ],
@@ -7624,6 +7644,18 @@
               }
             ],
             "title": "Active"
+          },
+          "monthly_fee_minor": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Monthly Fee Minor"
           },
           "name": {
             "anyOf": [

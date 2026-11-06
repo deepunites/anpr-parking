@@ -168,7 +168,7 @@ SAMPLES: dict[tuple[str, str], dict[str, Any]] = {
     },
     ("GET", "/api/v1/partners"): {},
     ("POST", "/api/v1/partners"): {
-        "json": {"lot_id": str(LOT_A1), "name": "RBAC {n}", "price_per_car_minor": 0, "reason": "rbac contract test"}
+        "json": {"lot_id": str(LOT_A1), "name": "RBAC {n}", "monthly_fee_minor": 0, "reason": "rbac contract test"}
     },
     ("PATCH", "/api/v1/partners/{partner_id}"): {
         "path": {"partner_id": "{partner_id}"},

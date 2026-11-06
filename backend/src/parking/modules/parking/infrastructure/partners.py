@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from parking.modules.parking.application.ports import Partner, PartnerMember, ValidationRecord, ValidationRow
 
-_PARTNER = "SELECT id, tenant_id, lot_id, name, price_per_car, active FROM partner"
+_PARTNER = "SELECT id, tenant_id, lot_id, name, price_per_car, monthly_fee, active FROM partner"
 
 
 def _partner(r: Any) -> Partner:
@@ -22,6 +22,7 @@ def _partner(r: Any) -> Partner:
         name=r.name,
         price_per_car=int(r.price_per_car),
         active=bool(r.active),
+        monthly_fee=int(r.monthly_fee),
     )
 
 
@@ -41,8 +42,8 @@ class SqlPartnerRepository:
     async def add(self, partner: Partner) -> None:
         await self._s.execute(
             text(
-                "INSERT INTO partner (id, tenant_id, lot_id, name, price_per_car, active) "
-                "VALUES (:id, :tenant, :lot, :name, :price, :active)"
+                "INSERT INTO partner (id, tenant_id, lot_id, name, price_per_car, monthly_fee, active) "
+                "VALUES (:id, :tenant, :lot, :name, :price, :fee, :active)"
             ),
             {
                 "id": partner.id,
@@ -50,21 +51,31 @@ class SqlPartnerRepository:
                 "lot": partner.lot_id,
                 "name": partner.name,
                 "price": partner.price_per_car,
+                "fee": partner.monthly_fee,
                 "active": partner.active,
             },
         )
 
     async def save(self, partner: Partner) -> None:
         await self._s.execute(
-            text("UPDATE partner SET name = :name, price_per_car = :price, active = :active WHERE id = :id"),
-            {"id": partner.id, "name": partner.name, "price": partner.price_per_car, "active": partner.active},
+            text(
+                "UPDATE partner SET name = :name, price_per_car = :price, monthly_fee = :fee, active = :active "
+                "WHERE id = :id"
+            ),
+            {
+                "id": partner.id,
+                "name": partner.name,
+                "price": partner.price_per_car,
+                "fee": partner.monthly_fee,
+                "active": partner.active,
+            },
         )
 
     async def of_user(self, user_id: UUID) -> Partner | None:
         row = (
             await self._s.execute(
                 text(
-                    "SELECT p.id, p.tenant_id, p.lot_id, p.name, p.price_per_car, p.active "
+                    "SELECT p.id, p.tenant_id, p.lot_id, p.name, p.price_per_car, p.monthly_fee, p.active "
                     "FROM partner_member m JOIN partner p ON p.id = m.partner_id WHERE m.user_id = :u"
                 ),
                 {"u": user_id},

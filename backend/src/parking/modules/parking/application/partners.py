@@ -1,6 +1,6 @@
 """Партнёры площадки (MediaPark, 2026-11-06): компьютерный клуб выпускает своих гостей. Гость говорит бармену номер
 машины — бармен находит её на площадке и отмечает «за счёт клуба»; на выезде к оплате 0 сум и стрела открывается
-сама. Клуб раз в месяц платит площадке цену за каждую отмеченную машину (цена — на момент отметки).
+сама. Клуб платит площадке фиксированную сумму в месяц (и, если задано, за каждую машину — цена на момент отметки).
 
 Бармен (роль PARTNER) видит только машины, похожие на введённый номер, и свои отметки — не сессии площадки, не
 деньги кассы. Отметку можно отменить, пока машина не выехала. Всё — с пользователем и в аудите (I-15)."""
@@ -61,7 +61,8 @@ class PartnerMonth:
     partner: Partner
     month: date
     count: int  # машин за месяц (без отменённых отметок)
-    total: int  # к оплате партнёром, тийины
+    cars_total: int  # за машины (цена на момент отметки), тийины
+    total: int  # к оплате партнёром: плата в месяц + за машины, тийины
     items: list[ValidationView]
 
 
@@ -178,12 +179,24 @@ class PartnerService:
         return [p for p in partners if allowed is None or p.lot_id in allowed]
 
     async def create_partner(
-        self, actor: CurrentUser, *, lot_id: UUID, name: str, price_per_car: int, reason: str
+        self,
+        actor: CurrentUser,
+        *,
+        lot_id: UUID,
+        name: str,
+        price_per_car: int,
+        reason: str,
+        monthly_fee: int = 0,
     ) -> Partner:
-        _check(name, price_per_car)
+        _check(name, price_per_car, monthly_fee)
         self._check_lot(actor, lot_id)
         partner = Partner(
-            id=uuid4(), tenant_id=actor.tenant_id, lot_id=lot_id, name=name.strip(), price_per_car=price_per_car
+            id=uuid4(),
+            tenant_id=actor.tenant_id,
+            lot_id=lot_id,
+            name=name.strip(),
+            price_per_car=price_per_car,
+            monthly_fee=monthly_fee,
         )
         async with self._uow_factory(actor.tenant_id) as uow:
             repos = self._repos(uow)
@@ -202,6 +215,7 @@ class PartnerService:
         price_per_car: int | None,
         active: bool | None,
         reason: str,
+        monthly_fee: int | None = None,
     ) -> Partner:
         async with self._uow_factory(actor.tenant_id) as uow:
             repos = self._repos(uow)
@@ -213,8 +227,9 @@ class PartnerService:
                 name=(name or current.name).strip(),
                 price_per_car=current.price_per_car if price_per_car is None else price_per_car,
                 active=current.active if active is None else active,
+                monthly_fee=current.monthly_fee if monthly_fee is None else monthly_fee,
             )
-            _check(updated.name, updated.price_per_car)
+            _check(updated.name, updated.price_per_car, updated.monthly_fee)
             await repos.partners.save(updated)
             await self._audit(repos, actor, "PARTNER_UPDATED", updated, None, reason)
         return updated
@@ -253,11 +268,13 @@ class PartnerService:
         rows = await repos.partners.validations(partner.id, since=since, until=until)
         items = [self._view(actor, row) for row in rows]
         counted = [i for i in items if i.state != "CANCELLED"]
+        cars_total = sum(i.price_per_car for i in counted)
         return PartnerMonth(
             partner=partner,
             month=date(month.year, month.month, 1),
             count=len(counted),
-            total=sum(i.price_per_car for i in counted),
+            cars_total=cars_total,
+            total=partner.monthly_fee + cars_total,
             items=items,
         )
 
@@ -332,13 +349,17 @@ class PartnerService:
                 actor_id=actor.user_id,
                 user_id=actor.user_id,
                 reason=reason,
-                payload={"partner": partner.name, "price_per_car": partner.price_per_car},
+                payload={
+                    "partner": partner.name,
+                    "monthly_fee": partner.monthly_fee,
+                    "price_per_car": partner.price_per_car,
+                },
             )
         )
 
 
-def _check(name: str, price_per_car: int) -> None:
+def _check(name: str, price_per_car: int, monthly_fee: int) -> None:
     if not 0 < len(name.strip()) <= 100:
         raise ValidationError("partner name is required")
-    if price_per_car < 0:
+    if price_per_car < 0 or monthly_fee < 0:
         raise ValidationError("price must be non-negative")

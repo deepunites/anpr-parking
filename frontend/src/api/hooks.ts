@@ -993,10 +993,10 @@ export function usePartners(enabled = true) {
 export function useSavePartner() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (v: { id?: string; lotId: string; name: string; priceMinor: number; active?: boolean; reason: string }) =>
+    mutationFn: async (v: { id?: string; lotId: string; name: string; feeMinor: number; priceMinor: number; active?: boolean; reason: string }) =>
       v.id
-        ? unwrap(await api.PATCH("/api/v1/partners/{partner_id}", { params: { path: { partner_id: v.id } }, body: { name: v.name, price_per_car_minor: v.priceMinor, active: v.active ?? null, reason: v.reason } }))
-        : unwrap(await api.POST("/api/v1/partners", { body: { lot_id: v.lotId, name: v.name, price_per_car_minor: v.priceMinor, reason: v.reason } })),
+        ? unwrap(await api.PATCH("/api/v1/partners/{partner_id}", { params: { path: { partner_id: v.id } }, body: { name: v.name, monthly_fee_minor: v.feeMinor, price_per_car_minor: v.priceMinor, active: v.active ?? null, reason: v.reason } }))
+        : unwrap(await api.POST("/api/v1/partners", { body: { lot_id: v.lotId, name: v.name, monthly_fee_minor: v.feeMinor, price_per_car_minor: v.priceMinor, reason: v.reason } })),
     onSuccess: () => void qc.invalidateQueries({ queryKey: ["partners"] }),
   });
 }

@@ -1,6 +1,7 @@
 """Партнёр площадки (MediaPark, 2026-11-06): компьютерный клуб выпускает гостей. Бармен находит машину по номеру и
 отмечает «за счёт клуба» — на выезде 0 сум и стрела сама; отметка, когда машина уже ждёт оплату у выезда, отменяет
-обязательство и открывает стрелу. Раз в месяц — расчёт: машин × цена на момент отметки, отменённые не в счёт."""
+обязательство и открывает стрелу. Раз в месяц — расчёт: клуб платит фиксированную сумму в месяц (отменённые
+отметки не в счёт машин; доплата за машину — только если задана)."""
 
 from __future__ import annotations
 
@@ -22,7 +23,7 @@ from tests.support.fakes import FakeBarrierDriver
 from tests.support.parking_fixtures import entry_cmd, exit_cmd
 
 ADMIN = CurrentUser(user_id=USER_A_ADMIN, tenant_id=TENANT_A, role=Role.TENANT_ADMIN, lot_scope=frozenset())
-PRICE = 1_000_000  # 10 000 сум за машину
+FEE = 50_000_000  # 500 000 сум в месяц — плата клуба
 
 
 def _plate() -> PlateNumber:
@@ -35,7 +36,12 @@ def _plate() -> PlateNumber:
 
 async def _club(container: Container) -> tuple[UUID, CurrentUser]:
     partner = await container.partners.create_partner(
-        ADMIN, lot_id=LOT_A1, name=f"Клуб {uuid4().hex[:6]}", price_per_car=PRICE, reason="компьютерный клуб"
+        ADMIN,
+        lot_id=LOT_A1,
+        name=f"Клуб {uuid4().hex[:6]}",
+        price_per_car=0,
+        monthly_fee=FEE,
+        reason="компьютерный клуб",
     )
     user = await container.users.create(
         ADMIN,
@@ -83,7 +89,7 @@ async def test_guest_of_the_club_exits_free_and_the_barrier_opens(
     assert payment is not None and payment["method"] == "PARTNER" and payment["amount"] == 0
     assert payment["source_id"] == validation_id
     month = await container.partners.report(ADMIN, partner_id, date.today().replace(day=1))
-    assert month.count == 1 and month.total == PRICE and month.items[0].plate == pl.value
+    assert month.count == 1 and month.total == FEE and month.cars_total == 0 and month.items[0].plate == pl.value
 
 
 async def test_validation_while_the_car_waits_to_pay_opens_the_barrier(
@@ -123,7 +129,7 @@ async def test_cancelled_validation_is_not_billed_and_double_validation_is_refus
     await container.partners.cancel(bartender, va, reason="ошиблись машиной")
 
     month = await container.partners.my_month(bartender, date.today().replace(day=1))
-    assert month.count == 1 and month.total == PRICE
+    assert month.count == 1 and month.total == FEE, "плата в месяц — сколько бы машин ни было"
     assert {i.state for i in month.items} == {"CANCELLED", "PARKED"}
     exited = await container.parking.start_exit(exit_cmd(first))
     assert exited.amount_minor > 0, "отметка отменена — по тарифу"
@@ -142,3 +148,16 @@ async def test_misread_plate_is_found_and_strangers_are_not_partners(container: 
     cashier = CurrentUser(user_id=USER_A_ADMIN, tenant_id=TENANT_A, role=Role.CASHIER, lot_scope=frozenset())
     with pytest.raises(AuthorizationError):
         await container.partners.find_cars(cashier, pl.value)
+
+
+async def test_optional_price_per_car_adds_to_the_monthly_fee(container: Container, clean_lot: None) -> None:
+    partner_id, bartender = await _club(container)
+    await container.partners.update_partner(
+        ADMIN, partner_id, name=None, price_per_car=200_000, active=None, reason="доплата за машину"
+    )
+    for _ in range(2):
+        await container.partners.validate(bartender, await _enter(container, _plate()))
+
+    month = await container.partners.report(ADMIN, partner_id, date.today().replace(day=1))
+
+    assert month.count == 2 and month.cars_total == 400_000 and month.total == FEE + 400_000

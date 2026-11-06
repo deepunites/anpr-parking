@@ -2899,11 +2899,18 @@ export interface components {
              * Format: uuid
              */
             lot_id: string;
+            /**
+             * Monthly Fee Minor
+             * @description сколько партнёр платит площадке в месяц, тийины
+             * @default 0
+             */
+            monthly_fee_minor: number;
             /** Name */
             name: string;
             /**
              * Price Per Car Minor
-             * @description сколько партнёр платит площадке за одну машину, тийины
+             * @description доплата за каждую машину (обычно 0), тийины
+             * @default 0
              */
             price_per_car_minor: number;
             /**
@@ -3774,6 +3781,11 @@ export interface components {
         /** PartnerMonthOut */
         PartnerMonthOut: {
             /**
+             * Cars Total Minor
+             * @description за машины (если задана цена за машину)
+             */
+            cars_total_minor: number;
+            /**
              * Count
              * @description машин за месяц, без отменённых отметок
              */
@@ -3785,7 +3797,7 @@ export interface components {
             partner: components["schemas"]["PartnerOut"];
             /**
              * Total Minor
-             * @description к оплате партнёром за месяц
+             * @description к оплате партнёром за месяц: плата в месяц + за машины
              */
             total_minor: number;
         };
@@ -3797,9 +3809,17 @@ export interface components {
             id: string;
             /** Lot Id */
             lot_id: string;
+            /**
+             * Monthly Fee Minor
+             * @description фиксированная плата партнёра в месяц, тийины
+             */
+            monthly_fee_minor: number;
             /** Name */
             name: string;
-            /** Price Per Car Minor */
+            /**
+             * Price Per Car Minor
+             * @description доплата за каждую отмеченную машину (обычно 0), тийины
+             */
             price_per_car_minor: number;
         };
         /** PaymentOut */
@@ -4898,6 +4918,8 @@ export interface components {
         UpdatePartnerRequest: {
             /** Active */
             active?: boolean | null;
+            /** Monthly Fee Minor */
+            monthly_fee_minor?: number | null;
             /** Name */
             name?: string | null;
             /** Price Per Car Minor */

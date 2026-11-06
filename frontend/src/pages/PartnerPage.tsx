@@ -11,7 +11,7 @@ import { Dialog } from "@/components/ui/dialog";
 import { Input, Label } from "@/components/ui/input";
 import { ErrorBox } from "@/components/ErrorBox";
 import { toast } from "@/components/ui/toast";
-import { formatClock, formatDuration, formatMinor, stayMinutes } from "@/lib/format";
+import { formatClock, formatDuration, stayMinutes } from "@/lib/format";
 
 function thisMonth(): string {
   const now = new Date();
@@ -101,9 +101,6 @@ export function PartnerPage() {
             </li>
           ))}
         </ul>
-        {month.data && month.data.total_minor > 0 && (
-          <p className="mt-2 text-[13px] font-semibold text-muted">{fmt(t("partner.total"), { v: formatMinor(month.data.total_minor) })}</p>
-        )}
       </Card>
 
       <CancelDialog validation={cancelling} onClose={() => setCancelling(null)} />

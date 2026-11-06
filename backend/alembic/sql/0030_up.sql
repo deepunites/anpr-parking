@@ -1,18 +1,20 @@
 -- Партнёры площадки (MediaPark, 2026-11-06): компьютерный клуб выпускает своих гостей — бармен вводит номер машины,
--- на выезде стрела открывается сама, без оплаты; клуб раз в месяц платит площадке цену за каждую отмеченную машину.
+-- на выезде стрела открывается сама, без оплаты; клуб платит площадке фиксированную сумму в месяц (monthly_fee),
+-- при желании — ещё и за каждую отмеченную машину (price_per_car, по умолчанию 0).
 CREATE TABLE partner (
     id             uuid         PRIMARY KEY DEFAULT gen_random_uuid(),
     tenant_id      uuid         NOT NULL,
     lot_id         uuid         NOT NULL,
     name           varchar(100) NOT NULL CHECK (length(btrim(name)) > 0),
     price_per_car  bigint       NOT NULL DEFAULT 0 CHECK (price_per_car >= 0),
+    monthly_fee    bigint       NOT NULL DEFAULT 0 CHECK (monthly_fee >= 0),
     active         boolean      NOT NULL DEFAULT true,
     created_at     timestamptz  NOT NULL DEFAULT now(),
     updated_at     timestamptz  NOT NULL DEFAULT now(),
     CONSTRAINT uq_partner_tenant UNIQUE (tenant_id, id),
     CONSTRAINT fk_partner_lot FOREIGN KEY (tenant_id, lot_id) REFERENCES parking_lot (tenant_id, id) ON DELETE RESTRICT
 );
-COMMENT ON TABLE partner IS 'Партнёр площадки (клуб, кафе): его сотрудники отмечают машины гостей — выезд бесплатно, расчёт с партнёром раз в месяц по числу машин.';
+COMMENT ON TABLE partner IS 'Партнёр площадки (клуб, кафе): его сотрудники отмечают машины гостей — выезд бесплатно; партнёр платит площадке monthly_fee в месяц (+ price_per_car за машину, если задана).';
 CREATE TRIGGER trg_partner_updated BEFORE UPDATE ON partner FOR EACH ROW EXECUTE FUNCTION app.set_updated_at();
 
 -- кто из сотрудников отмечает машины за партнёра (роль PARTNER: видит только поиск машины по номеру и свои отметки)

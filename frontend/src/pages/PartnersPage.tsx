@@ -20,7 +20,7 @@ function thisMonth(): string {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
 }
 
-/** Партнёры площадки (MediaPark: компьютерный клуб): цена за машину, входы барменов и расчёт за месяц —
+/** Партнёры площадки (MediaPark: компьютерный клуб): плата в месяц, входы барменов и расчёт за месяц —
     сколько машин клуб выпустил за свой счёт и сколько он должен площадке. */
 export function PartnersPage() {
   const { t } = useTranslation();
@@ -48,7 +48,10 @@ export function PartnersPage() {
               <Handshake className="mt-1 h-5 w-5 text-accent" aria-hidden="true" />
               <div className="min-w-0 flex-1">
                 <div className="text-[16px] font-extrabold">{p.name}</div>
-                <div className="text-[13px] font-semibold text-muted">{fmt(t("partners.price"), { v: formatMinor(p.price_per_car_minor) })}</div>
+                <div className="text-[13px] font-semibold text-muted">
+                  {fmt(t("partners.fee"), { v: formatMinor(p.monthly_fee_minor) })}
+                  {p.price_per_car_minor > 0 && ` + ${fmt(t("partners.price"), { v: formatMinor(p.price_per_car_minor) })}`}
+                </div>
               </div>
               {!p.active && <Badge tone="gray">{t("partners.inactive")}</Badge>}
             </div>
@@ -76,15 +79,18 @@ function PartnerForm({ partner, lotId, onDone }: { partner: PartnerOut | null; l
   const { t } = useTranslation();
   const save = useSavePartner();
   const [name, setName] = useState(partner?.name ?? "");
-  const [price, setPrice] = useState(partner ? String(partner.price_per_car_minor / 100) : "");
+  const [fee, setFee] = useState(partner ? String(partner.monthly_fee_minor / 100) : "");
+  const [price, setPrice] = useState(partner && partner.price_per_car_minor > 0 ? String(partner.price_per_car_minor / 100) : "");
   const [active, setActive] = useState(partner?.active ?? true);
-  const priceMinor = Math.round(Number(price.replace(/\s/g, "").replace(",", ".")) * 100);
-  const valid = name.trim().length > 0 && Number.isFinite(priceMinor) && priceMinor >= 0 && price.trim() !== "";
+  const toMinor = (v: string) => (v.trim() === "" ? 0 : Math.round(Number(v.replace(/\s/g, "").replace(",", ".")) * 100));
+  const feeMinor = toMinor(fee);
+  const priceMinor = toMinor(price);
+  const valid = name.trim().length > 0 && fee.trim() !== "" && [feeMinor, priceMinor].every((v) => Number.isFinite(v) && v >= 0);
   const submit = (e: FormEvent) => {
     e.preventDefault();
     if (!valid) return;
     save.mutate(
-      { id: partner?.id, lotId, name: name.trim(), priceMinor, active, reason: partner ? "изменение партнёра" : "новый партнёр площадки" },
+      { id: partner?.id, lotId, name: name.trim(), feeMinor, priceMinor, active, reason: partner ? "изменение партнёра" : "новый партнёр площадки" },
       {
         onSuccess: () => {
           toast.ok(t("partners.saved"));
@@ -100,8 +106,13 @@ function PartnerForm({ partner, lotId, onDone }: { partner: PartnerOut | null; l
         <Input id="partner-name" value={name} onChange={(e) => setName(e.target.value)} placeholder={t("partners.namePh")} data-testid="partner-name" />
       </div>
       <div>
+        <Label htmlFor="partner-fee">{t("partners.feeLabel")}</Label>
+        <Input id="partner-fee" inputMode="decimal" className="font-mono" value={fee} onChange={(e) => setFee(e.target.value)} placeholder="500000" data-testid="partner-fee" />
+        <p className="mt-1 text-[12px] font-semibold text-muted">{t("partners.feeHint")}</p>
+      </div>
+      <div>
         <Label htmlFor="partner-price">{t("partners.priceLabel")}</Label>
-        <Input id="partner-price" inputMode="decimal" className="font-mono" value={price} onChange={(e) => setPrice(e.target.value)} placeholder="10000" data-testid="partner-price" />
+        <Input id="partner-price" inputMode="decimal" className="font-mono" value={price} onChange={(e) => setPrice(e.target.value)} placeholder="0" data-testid="partner-price" />
         <p className="mt-1 text-[12px] font-semibold text-muted">{t("partners.priceHint")}</p>
       </div>
       {partner && (
@@ -188,9 +199,11 @@ function Report({ partner }: { partner: PartnerOut }) {
   const report = usePartnerReport(partner.id, month);
   const csv = () => {
     if (!report.data) return;
-    const rows = [["Дата отметки", "Номер", "Въезд", "Выезд", "Статус", "Цена, сум", "Кто отметил"]];
-    for (const v of report.data.items)
-      rows.push([v.created_at, v.plate ?? "", v.entry_time, v.exit_time ?? "", t(`partner.state.${v.state}`), String(v.price_per_car_minor / 100), v.created_by ?? ""]);
+    const rows = [["Дата отметки", "Номер", "Въезд", "Выезд", "Статус", "Кто отметил"]];
+    for (const v of report.data.items) rows.push([v.created_at, v.plate ?? "", v.entry_time, v.exit_time ?? "", t(`partner.state.${v.state}`), v.created_by ?? ""]);
+    rows.push([], ["Машин за месяц", String(report.data.count)], ["Плата в месяц, сум", String(report.data.partner.monthly_fee_minor / 100)]);
+    if (report.data.cars_total_minor > 0) rows.push(["За машины, сум", String(report.data.cars_total_minor / 100)]);
+    rows.push(["Итого к оплате, сум", String(report.data.total_minor / 100)]);
     const blob = new Blob(["﻿" + rows.map((r) => r.map((c) => `"${c.replace(/"/g, '""')}"`).join(";")).join("\n")], { type: "text/csv;charset=utf-8" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
@@ -221,8 +234,18 @@ function Report({ partner }: { partner: PartnerOut }) {
               <div className="text-2xl font-extrabold" data-testid="partner-report-count">{report.data.count}</div>
             </div>
             <div>
+              <div className="text-[11px] font-bold uppercase tracking-[0.06em] text-muted">{t("partners.feeShort")}</div>
+              <div className="font-mono text-2xl font-extrabold">{formatMinor(report.data.partner.monthly_fee_minor)}</div>
+            </div>
+            {report.data.cars_total_minor > 0 && (
+              <div>
+                <div className="text-[11px] font-bold uppercase tracking-[0.06em] text-muted">{t("partners.forCars")}</div>
+                <div className="font-mono text-2xl font-extrabold">{formatMinor(report.data.cars_total_minor)}</div>
+              </div>
+            )}
+            <div>
               <div className="text-[11px] font-bold uppercase tracking-[0.06em] text-muted">{t("partners.due")}</div>
-              <div className="font-mono text-2xl font-extrabold" data-testid="partner-report-total">{formatMinor(report.data.total_minor)}</div>
+              <div className="font-mono text-2xl font-extrabold text-ok-ink" data-testid="partner-report-total">{formatMinor(report.data.total_minor)}</div>
             </div>
           </div>
           <Table>

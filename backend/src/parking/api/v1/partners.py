@@ -32,13 +32,19 @@ class PartnerOut(BaseModel):
     id: str
     lot_id: str
     name: str
-    price_per_car_minor: int
+    monthly_fee_minor: int = Field(description="фиксированная плата партнёра в месяц, тийины")
+    price_per_car_minor: int = Field(description="доплата за каждую отмеченную машину (обычно 0), тийины")
     active: bool
 
     @classmethod
     def of(cls, p: Partner) -> PartnerOut:
         return cls(
-            id=str(p.id), lot_id=str(p.lot_id), name=p.name, price_per_car_minor=p.price_per_car, active=p.active
+            id=str(p.id),
+            lot_id=str(p.lot_id),
+            name=p.name,
+            monthly_fee_minor=p.monthly_fee,
+            price_per_car_minor=p.price_per_car,
+            active=p.active,
         )
 
 
@@ -88,7 +94,8 @@ class PartnerMonthOut(BaseModel):
     partner: PartnerOut
     month: str
     count: int = Field(description="машин за месяц, без отменённых отметок")
-    total_minor: int = Field(description="к оплате партнёром за месяц")
+    cars_total_minor: int = Field(description="за машины (если задана цена за машину)")
+    total_minor: int = Field(description="к оплате партнёром за месяц: плата в месяц + за машины")
     items: list[ValidationOut]
 
     @classmethod
@@ -97,6 +104,7 @@ class PartnerMonthOut(BaseModel):
             partner=PartnerOut.of(m.partner),
             month=m.month.strftime("%Y-%m"),
             count=m.count,
+            cars_total_minor=m.cars_total,
             total_minor=m.total,
             items=[ValidationOut.of(v) for v in m.items],
         )
@@ -128,12 +136,14 @@ class CancelRequest(BaseModel):
 class CreatePartnerRequest(BaseModel):
     lot_id: UUID
     name: str = Field(min_length=1, max_length=100)
-    price_per_car_minor: int = Field(ge=0, description="сколько партнёр платит площадке за одну машину, тийины")
+    monthly_fee_minor: int = Field(default=0, ge=0, description="сколько партнёр платит площадке в месяц, тийины")
+    price_per_car_minor: int = Field(default=0, ge=0, description="доплата за каждую машину (обычно 0), тийины")
     reason: Reason
 
 
 class UpdatePartnerRequest(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=100)
+    monthly_fee_minor: int | None = Field(default=None, ge=0)
     price_per_car_minor: int | None = Field(default=None, ge=0)
     active: bool | None = None
     reason: Reason
@@ -241,7 +251,12 @@ async def create_partner(
     container: Annotated[Container, Depends(get_container)],
 ) -> PartnerOut:
     partner = await container.partners.create_partner(
-        user, lot_id=body.lot_id, name=body.name, price_per_car=body.price_per_car_minor, reason=body.reason
+        user,
+        lot_id=body.lot_id,
+        name=body.name,
+        price_per_car=body.price_per_car_minor,
+        monthly_fee=body.monthly_fee_minor,
+        reason=body.reason,
     )
     return PartnerOut.of(partner)
 
@@ -260,6 +275,7 @@ async def update_partner(
         partner_id,
         name=body.name,
         price_per_car=body.price_per_car_minor,
+        monthly_fee=body.monthly_fee_minor,
         active=body.active,
         reason=body.reason,
     )
