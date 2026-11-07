@@ -17,7 +17,7 @@ import pytest
 from parking.modules.devices.application.commands import BarrierCommandExecutor
 from parking.modules.identity.application.contracts import CurrentUser, Role
 from parking.modules.parking.application.contracts import ExitStatus, SagaState
-from parking.modules.parking.domain.similar import plate_distance
+from parking.modules.parking.domain.similar import MISREAD_MAX, SIMILAR_MAX, plate_distance
 from parking.runtime.container import Container
 from parking.shared.errors import ConflictError
 from parking.shared.plate import PlateNumber
@@ -40,6 +40,11 @@ def _misread(pl: PlateNumber) -> PlateNumber:
     """Как ночью на MediaPark: потерян символ и спутана буква (90D077DD → 90D07CD)."""
     v = pl.value
     return PlateNumber.parse(v[:5] + v[6] + ("C" if v[7] != "C" else "W"))
+
+
+def _badly_misread(pl: PlateNumber) -> PlateNumber:
+    """Вдобавок обрезан первый символ: похожа (кассиру в подсказки), но сама выезд уже не находит."""
+    return PlateNumber.parse(_misread(pl).value[1:])
 
 
 async def _enter(container: Container, pl: PlateNumber, hours_ago: float = 2.0) -> UUID:
@@ -113,7 +118,9 @@ async def test_similar_plates_and_match_start_exit_of_the_parked_car(
     parked = await _enter(container, real)
     others = [await _enter(container, _plate(), hours_ago=1) for _ in range(3)]
     seen_at = datetime.now(tz=UTC) - timedelta(minutes=3)
-    unknown = await container.parking.start_exit(exit_cmd(_misread(real), at=seen_at))
+    read = _badly_misread(real)
+    assert MISREAD_MAX < plate_distance(read.value, real.value) <= SIMILAR_MAX
+    unknown = await container.parking.start_exit(exit_cmd(read, at=seen_at))
     assert unknown.session_id is not None and unknown.status is ExitStatus.EXIT_WITHOUT_SESSION
     assert await container.occupancy.get(LOT_A1) == 5
 
@@ -123,7 +130,7 @@ async def test_similar_plates_and_match_start_exit_of_the_parked_car(
     assert similar[0].session.plate is not None
     assert all(s.session.id != unknown.session_id for s in similar)
     assert not {s.session.id for s in similar} & set(others) or all(
-        plate_distance(_misread(real).value, s.session.plate or "") <= 3 for s in similar
+        plate_distance(read.value, s.session.plate or "") <= 3 for s in similar
     )
 
     view = await container.parking.match_exit(
@@ -145,6 +152,53 @@ async def test_similar_plates_and_match_start_exit_of_the_parked_car(
     assert await _audit(owner, parked, "EXIT_STARTED_MANUAL") == 1
     with pytest.raises(ConflictError):
         await container.parking.match_exit(ADMIN, unknown.session_id, parked, reason="второй раз")
+
+
+async def test_misread_exit_finds_the_only_similar_parked_car(
+    container: Container, owner: asyncpg.Connection, clean_lot: None
+) -> None:
+    """MediaPark (2026-11-07): ~25 «выездов без въезда» в день — камера выезда путала букву, регион, теряла символ
+    (90D07CD у 90D077DD, 90L546VA у 10L546VA), разборы копились и «занимали» места. Единственная похожая машина на
+    площадке — она: обычный выезд с оплатой у кассира, без разбора; повторное чтение у стрелы — в тот же выезд."""
+    real = _plate()
+    parked = await _enter(container, real)
+    for _ in range(3):
+        await _enter(container, _plate(), hours_ago=1)
+    seen_at = datetime.now(tz=UTC) - timedelta(minutes=1)
+
+    exited = await container.parking.start_exit(exit_cmd(_misread(real), at=seen_at))
+
+    assert exited.status is ExitStatus.PAYMENT_REQUIRED and exited.session_id == parked and exited.amount_minor > 0
+    assert exited.saga_id is not None
+    reviews = await owner.fetchval(
+        "SELECT count(*) FROM parking_session WHERE lot_id = $1 AND status = 'MANUAL_REVIEW'", LOT_A1
+    )
+    assert reviews == 0 and await container.occupancy.get(LOT_A1) == 4
+    matched = await owner.fetchval(
+        "SELECT count(*) FROM audit_log WHERE session_id = $1 AND action = 'EXIT_MATCHED_BY_CAMERA' "
+        "AND actor_type = 'CAMERA'",
+        parked,
+    )
+    assert matched == 1
+    region = "70" if real.value[:2] != "70" else "80"
+    again = await container.parking.start_exit(
+        exit_cmd(PlateNumber.parse(region + real.value[2:]), at=seen_at + timedelta(seconds=20))
+    )
+    assert again.status is ExitStatus.EXIT_IN_PROGRESS and again.saga_id == exited.saga_id, "спутан регион — та же"
+
+
+async def test_two_similar_parked_cars_leave_the_exit_to_the_cashier(container: Container, clean_lot: None) -> None:
+    real = _plate()
+    twin = PlateNumber.parse(real.value[:7] + ("A" if real.value[7] != "A" else "B"))
+    a, b = await _enter(container, real), await _enter(container, twin, hours_ago=1)  # не двойное чтение въезда
+
+    unknown = await container.parking.start_exit(exit_cmd(PlateNumber.parse(real.value[:7] + "C")))
+
+    assert unknown.status is ExitStatus.EXIT_WITHOUT_SESSION and unknown.session_id is not None, (
+        "какая из двух — решит кассир"
+    )
+    similar = await container.parking.similar_sessions(ADMIN, unknown.session_id)
+    assert {s.session.id for s in similar[:2]} == {a, b}
 
 
 async def test_match_requires_exit_without_entry_and_parked_target(container: Container, clean_lot: None) -> None:

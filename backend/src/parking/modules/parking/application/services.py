@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import hashlib
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from typing import Any
 from uuid import UUID, uuid4
@@ -54,7 +54,14 @@ from parking.modules.parking.domain.session import (
     SessionOrphaned,
     SessionStatus,
 )
-from parking.modules.parking.domain.similar import SIMILAR_MAX, is_complete, plate_distance, same_car_reads
+from parking.modules.parking.domain.similar import (
+    MISREAD_MARGIN,
+    MISREAD_MAX,
+    SIMILAR_MAX,
+    is_complete,
+    plate_distance,
+    same_car_reads,
+)
 from parking.modules.tariff.application.contracts import AccessKind as TariffAccessKind
 from parking.modules.tariff.application.contracts import AccessTerms, TariffCalculator
 from parking.modules.tenancy.application.contracts import LotDirectory, LotInfo, UnknownExitPolicy
@@ -276,10 +283,9 @@ class ParkingService:
         hashes = self._crypto.hashes_for_lookup(cmd.tenant_id, cmd.plate)
         session = await repos.sessions.open_for_plate(cmd.lot_id, hashes, for_update=True)
         if session is None:
-            echo = await self._similar_entry_echo(uow, repos, lot, cmd)
-            if echo is not None:
-                return echo
-            return await self._exit_without_session(uow, repos, lot, cmd)
+            # эхо въезда с другим чтением, потом — машина на площадке, чей номер камера выезда прочитала с ошибкой
+            similar = await self._similar_entry_echo(uow, repos, lot, cmd) or await self._misread_exit(uow, repos, cmd)
+            return similar or await self._exit_without_session(uow, repos, lot, cmd)
         since_entry = cmd.event_time - session.entry_time
         if (
             session.status is SessionStatus.ACTIVE
@@ -340,6 +346,75 @@ class ParkingService:
             await self._camera_correct(uow, repos, entered.id, cmd.plate, cmd.camera_id, cmd.event_id)
         log.info("exit_entry_echo_similar", session_id=str(entered.id), camera_id=str(cmd.camera_id))
         return ExitResult(status=ExitStatus.EXIT_ENTRY_ECHO, session_id=entered.id)
+
+    async def _misread_exit(self, uow: UnitOfWork, repos: ParkingRepositories, cmd: ExitCommand) -> ExitResult | None:
+        """Камера выезда прочитала номер с ошибкой (90S777AZ у 90S777ZZ, 90L546VA у 10L546VA — MediaPark: ~25 «выездов
+        без въезда» в день, разборы копились, место «занято»): единственная машина на площадке с номером не дальше
+        MISREAD_MAX — она и есть. Обычный выезд с момента, когда её увидела камера: тариф, оплата у кассира, стрела —
+        как «Это она», только без кассира. Две похожие машины или неуверенное чтение — по-прежнему разбор."""
+        if cmd.requires_review:
+            return None
+        found = await self._parked_like(repos, cmd.tenant_id, cmd.lot_id, cmd.plate)
+        if not found or found[0][0] > MISREAD_MAX:
+            return None
+        if len(found) > 1 and found[1][0] - found[0][0] < MISREAD_MARGIN:
+            return None
+        distance, candidate, plate, _ = found[0]
+        if candidate.entry_time >= cmd.event_time:  # уехать раньше, чем въехала, она не могла — другая машина
+            return None
+        target = await repos.sessions.get_for_update(candidate.id)
+        if target is None or target.status is not SessionStatus.ACTIVE:
+            return None
+        decision = await self._decide(cmd.tenant_id, cmd.lot_id, plate, cmd.event_time)
+        result = await self._exit_session(uow, repos, target, replace(cmd, plate=plate, decision=decision))
+        await repos.audit.record(
+            AuditEntry(
+                tenant_id=target.tenant_id,
+                action="EXIT_MATCHED_BY_CAMERA",
+                entity_type="parking_session",
+                entity_id=target.id,
+                lot_id=target.lot_id,
+                session_id=target.id,
+                actor_type=ActorType.CAMERA,
+                actor_id=cmd.camera_id,
+                reason="номер на выезде прочитан с ошибкой — единственная похожая машина на площадке",
+                payload={"distance": distance, "event_id": str(cmd.event_id)},
+            )
+        )
+        log.info("exit_misread_matched", session_id=str(target.id), distance=distance, status=result.status.value)
+        return result
+
+    async def _parked_like(
+        self,
+        repos: ParkingRepositories,
+        tenant_id: UUID,
+        lot_id: UUID,
+        plate: PlateNumber,
+        *,
+        besides: ParkingSession | None = None,
+    ) -> list[tuple[float, ParkingSession, PlateNumber, VehicleAttributes]]:
+        """Машины на площадке с номером, похожим на plate (не дальше SIMILAR_MAX) — лучшие первыми, при равенстве —
+        въехавшие позже. besides — сама сессия разбора и её машина в кандидаты не попадают."""
+        active = await repos.sessions.list_by_lot(
+            lot_id, statuses=(SessionStatus.ACTIVE,), limit=SIMILAR_SCAN, after=None
+        )
+        others = [s for s in active if besides is None or (s.id != besides.id and s.vehicle_id != besides.vehicle_id)]
+        cards = await repos.vehicles.cards(list({s.vehicle_id for s in others}))
+        found: list[tuple[float, ParkingSession, PlateNumber, VehicleAttributes]] = []
+        for other in others:
+            card = cards.get(other.vehicle_id)
+            if card is None:
+                continue
+            try:
+                number = self._crypto.decrypt(tenant_id, card.plate_encrypted, card.enc_key_version)
+            except Exception as exc:  # ключ номера недоступен — кандидат пропускается, разбор не падает
+                log.warning("similar_plate_skipped", session_id=str(other.id), error_type=type(exc).__name__)
+                continue
+            distance = plate_distance(plate.value, number.value)
+            if distance <= SIMILAR_MAX:
+                found.append((distance, other, number, card.attributes))
+        found.sort(key=lambda f: (f[0], -f[1].entry_time.timestamp()))
+        return found
 
     def _closest(
         self, tenant_id: UUID, sessions: list[tuple[ParkingSession, bytes, int]], plate: PlateNumber
@@ -1065,25 +1140,7 @@ class ParkingService:
             repos = self._repos(uow)
             session = await self._load_scoped(repos, actor, session_id)
             plate = await self._plate(repos, actor.tenant_id, session.vehicle_id)
-            active = await repos.sessions.list_by_lot(
-                session.lot_id, statuses=(SessionStatus.ACTIVE,), limit=SIMILAR_SCAN, after=None
-            )
-            others = [s for s in active if s.id != session.id and s.vehicle_id != session.vehicle_id]
-            cards = await repos.vehicles.cards(list({s.vehicle_id for s in others}))
-            found: list[tuple[float, ParkingSession, PlateNumber, VehicleAttributes]] = []
-            for other in others:
-                card = cards.get(other.vehicle_id)
-                if card is None:
-                    continue
-                try:
-                    number = self._crypto.decrypt(actor.tenant_id, card.plate_encrypted, card.enc_key_version)
-                except Exception as exc:  # ключ номера недоступен — кандидат пропускается, разбор не падает
-                    log.warning("similar_plate_skipped", session_id=str(other.id), error_type=type(exc).__name__)
-                    continue
-                distance = plate_distance(plate.value, number.value)
-                if distance <= SIMILAR_MAX:
-                    found.append((distance, other, number, card.attributes))
-            found.sort(key=lambda f: (f[0], -f[1].entry_time.timestamp()))
+            found = await self._parked_like(repos, actor.tenant_id, session.lot_id, plate, besides=session)
             full = await self._full_plates(repos, actor, session.lot_id)
             return [
                 SimilarSession(session=SessionView.of(s, n.value if full else n.masked, _attrs_view(attrs)), distance=d)
